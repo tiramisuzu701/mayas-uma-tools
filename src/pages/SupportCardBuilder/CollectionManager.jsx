@@ -164,7 +164,7 @@ export default function CollectionManager({ cardsData, ownedCards, onChangeOwned
                 onClick={() => setTypeFilter(t)}
                 title={t}
               >
-                {TYPE_ICONS[t] || '◆'}
+                {TYPE_ICONS[t] ? <img src={TYPE_ICONS[t]} alt={t} /> : '◆'}
               </button>
             ))}
           </div>

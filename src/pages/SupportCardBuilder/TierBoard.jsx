@@ -228,7 +228,7 @@ export default function TierBoard({ tierlist, getCardDisabledInfo, onCardClick, 
                 onClick={() => setTypeFilter(t)}
                 title={t}
               >
-                {TYPE_ICONS[t] || '◆'}
+                {TYPE_ICONS[t] ? <img src={TYPE_ICONS[t]} alt={t} /> : '◆'}
               </button>
             ))}
           </div>

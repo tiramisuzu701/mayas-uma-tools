@@ -1,4 +1,5 @@
-import { STAT_KEYS, statIcon, statColor } from './statTheme.js'
+import { STAT_KEYS, statColor } from './statTheme.js'
+import IconBadge from './IconBadge.jsx'
 
 // Maps the engine's rawStats/maxStats keys (which use "Intelligence") to the
 // display key "Wit" used everywhere else in this UI.
@@ -39,7 +40,7 @@ export default function DeckStatPreview({ deck, maxStats, sparkCapBonus }) {
       <div className="scb-stat-grid" style={{ position: 'relative', marginBottom: breakdown ? 22 : 0 }}>
         {statTiles.map(({ stat, current, delta, max }) => (
           <div key={stat} className="scb-stat-tile" style={{ '--badge-color': statColor(stat) }}>
-            <div className="scb-icon-badge" style={{ '--badge-color': statColor(stat) }}>{statIcon(stat)}</div>
+            <IconBadge stat={stat} />
             <div className="scb-stat-tile-label">{stat}</div>
             <div className="scb-stat-tile-value">
               {Math.round(current)}
@@ -68,9 +69,7 @@ export default function DeckStatPreview({ deck, maxStats, sparkCapBonus }) {
                   <td>
                     <span className="scb-score-row-stat">
                       {STAT_KEYS.includes(row.stat) || row.stat === 'Skill Points' ? (
-                        <span className="scb-icon-badge scb-icon-badge-sm" style={{ '--badge-color': statColor(row.stat) }}>
-                          {statIcon(row.stat)}
-                        </span>
+                        <IconBadge stat={row.stat} small />
                       ) : row.icon_id ? (
                         <img
                           src={`https://gametora.com/images/umamusume/skill_icons/utx_ico_skill_${row.icon_id}.png`}

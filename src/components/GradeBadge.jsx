@@ -9,14 +9,15 @@ export default function GradeBadge({ grade, label }) {
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
-        minWidth: 22,
-        height: 22,
-        padding: '0 6px',
-        borderRadius: 6,
-        fontSize: '0.72rem',
+        minWidth: 25,
+        height: 25,
+        padding: '0 7px',
+        borderRadius: 7,
+        fontSize: '0.76rem',
         fontWeight: 800,
         color: '#17132b',
         background: color,
+        boxShadow: `0 0 10px -2px ${color}`,
       }}
     >
       {grade}

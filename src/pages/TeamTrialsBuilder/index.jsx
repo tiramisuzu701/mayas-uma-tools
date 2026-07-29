@@ -40,17 +40,12 @@ export default function TeamTrialsBuilder() {
         </p>
       </div>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 24, borderBottom: '1px solid var(--border-soft)' }}>
+      <div className="tab-row">
         {TABS.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className="btn btn-ghost"
-            style={{
-              borderRadius: '10px 10px 0 0',
-              borderBottom: tab === t.id ? '2px solid var(--pink)' : '2px solid transparent',
-              color: tab === t.id ? 'var(--text)' : 'var(--text-dim)',
-            }}
+            className={`tab-btn ${tab === t.id ? 'active' : ''}`}
           >
             {t.label}
           </button>

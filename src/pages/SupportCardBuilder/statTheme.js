@@ -4,19 +4,33 @@
 // Collection Manager). Centralized here so the whole tool reads as one
 // consistent palette instead of each component picking its own colors.
 //
-// Colors/icons loosely follow Tachyon's Lab's own scheme (book=Speed,
-// heart=Stamina, flexed bicep=Power, flame=Guts, graduation cap=Wit,
-// sparkles=Skill Points) so the two tools feel like the same kind of app.
+// The icon images themselves (assets/icons/*.png) are the actual game icons,
+// copied from Tachyon's Lab's own public/images/icons/ folder (same
+// permission/credit as the ported engine and card data - see the credit
+// note on the SupportCardBuilder page and in the project README). Each
+// image already has its colored rounded-square background baked in; the
+// STAT_COLORS/TYPE_COLORS below are only used for the glow shadow and
+// active-state border drawn around it, not as a literal background fill.
+
+import speedIcon from './assets/icons/Speed.png'
+import staminaIcon from './assets/icons/Stamina.png'
+import powerIcon from './assets/icons/Power.png'
+import gutsIcon from './assets/icons/Guts.png'
+import witIcon from './assets/icons/Intelligence.png'
+import skillPointIcon from './assets/icons/SkillPoint.png'
+import supportIcon from './assets/icons/Support.png'
+import buddyIcon from './assets/icons/Buddy.png'
+import hintIcon from './assets/icons/Hint.png'
 
 export const STAT_KEYS = ['Speed', 'Stamina', 'Power', 'Guts', 'Wit']
 
 export const STAT_ICONS = {
-  Speed: '📘',
-  Stamina: '❤️',
-  Power: '💪',
-  Guts: '🔥',
-  Wit: '🎓',
-  'Skill Points': '✨',
+  Speed: speedIcon,
+  Stamina: staminaIcon,
+  Power: powerIcon,
+  Guts: gutsIcon,
+  Wit: witIcon,
+  'Skill Points': skillPointIcon,
 }
 
 export const STAT_COLORS = {
@@ -32,13 +46,13 @@ export const STAT_COLORS = {
 // every value SupportCard.cardType.type can actually take, including the
 // non-trainable "Support"/"Buddy" (friend) types.
 export const TYPE_ICONS = {
-  Speed: '📘',
-  Stamina: '❤️',
-  Power: '💪',
-  Guts: '🔥',
-  Wit: '🎓',
-  Support: '🤝',
-  Buddy: '🐾',
+  Speed: speedIcon,
+  Stamina: staminaIcon,
+  Power: powerIcon,
+  Guts: gutsIcon,
+  Wit: witIcon,
+  Support: supportIcon,
+  Buddy: buddyIcon,
 }
 
 export const TYPE_COLORS = {
@@ -48,8 +62,10 @@ export const TYPE_COLORS = {
   Guts: 'var(--pink)',
   Wit: 'var(--green)',
   Support: 'var(--gold)',
-  Buddy: 'var(--purple)',
+  Buddy: 'var(--lime)',
 }
+
+export const HINT_ICON = hintIcon
 
 // Tier badge colors for the global S-G tier list - deliberately a separate
 // mapping from data/constants.js's GRADE_COLORS (used by Team Trials
@@ -72,7 +88,7 @@ export const RARITY_COLORS = {
 }
 
 export function statIcon(stat) {
-  return STAT_ICONS[stat] || '◆'
+  return STAT_ICONS[stat] || null
 }
 
 export function statColor(stat) {

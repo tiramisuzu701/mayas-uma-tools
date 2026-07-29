@@ -154,7 +154,11 @@ faithfully (bug-for-bug, including a few known scoring quirks in the
 original) rather than rewritten; the surrounding page/UI is new. Support
 card art is hotlinked from GameTora's Uma Musume database, the same way
 character portraits are elsewhere on this site (see "Character data"
-above) - not downloaded or committed to this repo.
+above) - not downloaded or committed to this repo. The small stat/type
+icon images used throughout the tool (`src/pages/SupportCardBuilder/assets/icons/`)
+are likewise from Tachyon's Lab, under the same license/permission -
+these are small enough (~23KB total) that they're committed directly to
+this repo rather than hotlinked.
 
 Because this repo now incorporates GPL-3.0-licensed code, the whole
 project is licensed under the GNU General Public License v3.0 - see

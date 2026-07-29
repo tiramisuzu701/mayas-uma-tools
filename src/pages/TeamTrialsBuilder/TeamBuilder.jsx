@@ -118,20 +118,22 @@ export default function TeamBuilder({ roster }) {
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 22 }}>
-        <button className="btn btn-primary" onClick={autoFillAll} disabled={roster.length === 0}>
-          Auto-fill best team
-        </button>
-        <button className="btn" onClick={autoFillRemaining} disabled={roster.length === 0}>
-          Auto-fill empty slots
-        </button>
-        <button className="btn btn-ghost" onClick={clearAll}>
-          Clear
-        </button>
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span className="pill">
-            {filledEntries.length}/15 filled · Estimated fit score: {totalScore.toFixed(0)}
-          </span>
+      <div className="glow-card" style={{ padding: 18, marginBottom: 22 }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', position: 'relative' }}>
+          <button className="btn btn-primary" onClick={autoFillAll} disabled={roster.length === 0}>
+            Auto-fill best team
+          </button>
+          <button className="btn" onClick={autoFillRemaining} disabled={roster.length === 0}>
+            Auto-fill empty slots
+          </button>
+          <button className="btn btn-ghost" onClick={clearAll}>
+            Clear
+          </button>
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span className="pill">
+              {filledEntries.length}/15 filled · Estimated fit score: {totalScore.toFixed(0)}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -140,8 +142,8 @@ export default function TeamBuilder({ roster }) {
           const dupes = styleOverlapByCategory[category.id]
 
           return (
-            <div key={category.id} className="card" style={{ padding: 20 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
+            <div key={category.id} className="glow-card" style={{ padding: 20 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14, position: 'relative' }}>
                 <h3 style={{ margin: 0, fontSize: '1.05rem' }}>{category.label}</h3>
               </div>
 
@@ -155,6 +157,7 @@ export default function TeamBuilder({ roster }) {
                     background: 'rgba(251, 191, 36, 0.08)',
                     fontSize: '0.78rem',
                     color: 'var(--text-dim)',
+                    position: 'relative',
                   }}
                 >
                   <strong style={{ color: 'var(--amber)' }}>Running style overlap in this race: </strong>
@@ -168,6 +171,7 @@ export default function TeamBuilder({ roster }) {
                   display: 'grid',
                   gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
                   gap: 14,
+                  position: 'relative',
                 }}
               >
                 {TEAM_ROLES.map((role) => (

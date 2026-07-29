@@ -1,4 +1,5 @@
-import { STAT_KEYS, statIcon, statColor } from './statTheme.js'
+import { STAT_KEYS, statColor } from './statTheme.js'
+import IconBadge from './IconBadge.jsx'
 
 // Lets you override where training turns get spent, instead of the deck's
 // own auto-calculated distribution (which comes from each card's Specialty
@@ -32,9 +33,7 @@ export default function TrainingDistributionSelector({ calculatedDistribution, m
           const pct = current[i] * 100
           return (
             <div key={stat} className="scb-dist-row">
-              <span className="scb-icon-badge scb-icon-badge-sm" style={{ '--badge-color': statColor(stat) }}>
-                {statIcon(stat)}
-              </span>
+              <IconBadge stat={stat} small />
               <span className="scb-dist-label">{stat}</span>
               <div className="scb-dist-bar">
                 <div className="scb-dist-bar-fill" style={{ width: `${pct}%`, background: statColor(stat) }} />

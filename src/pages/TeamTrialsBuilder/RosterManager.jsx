@@ -48,31 +48,33 @@ export default function RosterManager({ roster, onAdd, onUpdate, onDelete }) {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
-        <p style={{ margin: 0 }}>
-          {roster.length} trained {roster.length === 1 ? 'uma' : 'umas'} saved in this browser.
-        </p>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <button className="btn btn-sm" onClick={() => fileInputRef.current?.click()}>
-            Import
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="application/json"
-            style={{ display: 'none' }}
-            onChange={handleImportFile}
-          />
-          <button className="btn btn-sm" onClick={() => exportRosterAsFile(roster)} disabled={roster.length === 0}>
-            Export backup
-          </button>
-          <button className="btn btn-primary btn-sm" onClick={() => setModalMode('add')}>
-            + Add uma
-          </button>
+      <div className="glow-card" style={{ padding: 20, marginBottom: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', position: 'relative' }}>
+          <p style={{ margin: 0 }}>
+            {roster.length} trained {roster.length === 1 ? 'uma' : 'umas'} saved in this browser.
+          </p>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button className="btn btn-sm" onClick={() => fileInputRef.current?.click()}>
+              Import
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/json"
+              style={{ display: 'none' }}
+              onChange={handleImportFile}
+            />
+            <button className="btn btn-sm" onClick={() => exportRosterAsFile(roster)} disabled={roster.length === 0}>
+              Export backup
+            </button>
+            <button className="btn btn-primary btn-sm" onClick={() => setModalMode('add')}>
+              + Add uma
+            </button>
+          </div>
         </div>
-      </div>
 
-      {importError && <p style={{ color: 'var(--red)', fontSize: '0.85rem' }}>{importError}</p>}
+        {importError && <p style={{ color: 'var(--red)', fontSize: '0.85rem', position: 'relative', marginTop: 10, marginBottom: 0 }}>{importError}</p>}
+      </div>
 
       {roster.length === 0 ? (
         <div className="empty-state">
@@ -82,8 +84,8 @@ export default function RosterManager({ roster, onAdd, onUpdate, onDelete }) {
           </button>
         </div>
       ) : (
-        <div className="scroll-x">
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
+        <div className="glow-card scroll-x" style={{ padding: 20 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760, position: 'relative' }}>
             <thead>
               <tr style={{ textAlign: 'left', fontSize: '0.75rem', color: 'var(--text-faint)' }}>
                 <th style={{ padding: '0 10px 10px' }}>Uma</th>
