@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import SupportCardArt from '../../components/SupportCardArt.jsx'
 import { exportOwnedCardsCode, importOwnedCardsCode, downloadOwnedCardsFile } from './storage.js'
+import { TYPE_ICONS, TYPE_COLORS, RARITY_COLORS } from './statTheme.js'
 
 const RARITY_SYMBOL = { 1: 'R', 2: 'SR', 3: 'SSR' }
 const TYPE_ORDER = ['Speed', 'Stamina', 'Power', 'Guts', 'Wit', 'Support', 'Buddy']
@@ -33,6 +34,11 @@ export default function CollectionManager({ cardsData, ownedCards, onChangeOwned
     }
     return Array.from(seen.values())
   }, [cardsData])
+
+  const typesPresent = useMemo(() => {
+    const present = new Set(uniqueCards.map((c) => cardType(c.prefered_type)))
+    return TYPE_ORDER.filter((t) => present.has(t))
+  }, [uniqueCards])
 
   const filteredCards = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -99,8 +105,8 @@ export default function CollectionManager({ cardsData, ownedCards, onChangeOwned
 
   return (
     <div>
-      <div className="card" style={{ padding: 20, marginBottom: 20 }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+      <div className="scb-glow-card" style={{ padding: 20, marginBottom: 20 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 12, position: 'relative' }}>
           <span className="pill">{ownedCount} cards owned</span>
           <button type="button" className="btn btn-sm" onClick={handleExportCode}>Copy export code</button>
           <button type="button" className="btn btn-sm" onClick={handleDownload}>Download JSON</button>
@@ -115,11 +121,11 @@ export default function CollectionManager({ cardsData, ownedCards, onChangeOwned
         </div>
 
         {exportCode && !showImport && (
-          <textarea readOnly value={exportCode} rows={3} style={{ width: '100%', fontFamily: 'monospace', fontSize: '0.72rem' }} />
+          <textarea readOnly value={exportCode} rows={3} style={{ width: '100%', fontFamily: 'monospace', fontSize: '0.72rem', position: 'relative' }} />
         )}
 
         {showImport && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, position: 'relative' }}>
             <textarea
               value={importValue}
               onChange={(e) => setImportValue(e.target.value)}
@@ -136,23 +142,35 @@ export default function CollectionManager({ cardsData, ownedCards, onChangeOwned
         )}
       </div>
 
-      <div className="card" style={{ padding: 20, marginBottom: 20 }}>
-        <div className="scb-config-grid" style={{ marginBottom: 0 }}>
-          <div className="field">
-            <label>Type</label>
-            <div className="toggle-pill-row">
-              {['All', ...TYPE_ORDER].map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  className={`toggle-pill ${typeFilter === t ? 'active' : ''}`}
-                  onClick={() => setTypeFilter(t)}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
+      <div className="scb-glow-card" style={{ padding: 20, marginBottom: 20 }}>
+        <div style={{ marginBottom: 16, position: 'relative' }}>
+          <label style={{ marginBottom: 8, display: 'block' }}>Card type</label>
+          <div className="scb-type-filter-row">
+            <button
+              type="button"
+              className={`scb-type-filter-btn ${typeFilter === 'All' ? 'active' : ''}`}
+              style={{ '--badge-color': 'var(--purple)' }}
+              onClick={() => setTypeFilter('All')}
+              title="All types"
+            >
+              ✦
+            </button>
+            {typesPresent.map((t) => (
+              <button
+                key={t}
+                type="button"
+                className={`scb-type-filter-btn ${typeFilter === t ? 'active' : ''}`}
+                style={{ '--badge-color': TYPE_COLORS[t] || 'var(--purple)' }}
+                onClick={() => setTypeFilter(t)}
+                title={t}
+              >
+                {TYPE_ICONS[t] || '◆'}
+              </button>
+            ))}
           </div>
+        </div>
+
+        <div className="scb-config-grid" style={{ marginBottom: 0, position: 'relative' }}>
           <div className="field">
             <label>Rarity</label>
             <div className="toggle-pill-row">
@@ -160,7 +178,7 @@ export default function CollectionManager({ cardsData, ownedCards, onChangeOwned
                 <button
                   key={r}
                   type="button"
-                  className={`toggle-pill ${rarityFilter === r ? 'active' : ''}`}
+                  className={`toggle-pill toggle-pill-blue ${rarityFilter === r ? 'active' : ''}`}
                   onClick={() => setRarityFilter(r)}
                 >
                   {r}
@@ -188,11 +206,18 @@ export default function CollectionManager({ cardsData, ownedCards, onChangeOwned
           {filteredCards.map((c) => {
             const owned = ownedCards[c.id]
             const level = owned === undefined ? -1 : owned
+            const rarity = RARITY_SYMBOL[c.rarity] || '?'
             return (
-              <div key={c.id} className={`scb-collection-card ${level === -1 ? 'scb-collection-card-unowned' : ''}`}>
+              <div
+                key={c.id}
+                className={`scb-collection-card ${level === -1 ? 'scb-collection-card-unowned' : ''}`}
+                style={{ '--badge-color': RARITY_COLORS[rarity] || 'var(--border)' }}
+              >
                 <SupportCardArt cardId={c.id} name={c.card_chara_name} width={80} />
                 <div className="scb-tier-card-name">{c.card_chara_name}</div>
-                <span className="pill">{RARITY_SYMBOL[c.rarity] || '?'}</span>
+                <span className="scb-tier-tile-rarity" style={{ background: RARITY_COLORS[rarity] || 'var(--border)' }}>
+                  {rarity}
+                </span>
                 <select value={level} onChange={(e) => setOwnership(c.id, parseInt(e.target.value, 10))}>
                   {Object.entries(OWNERSHIP_LABELS).map(([lvl, label]) => (
                     <option key={lvl} value={lvl}>{label}</option>

@@ -49,6 +49,13 @@ export function getSparkFlatStats(sparks) {
   return TrainingData.getSparkBonuses(sparks || []).flatStats
 }
 
+// Per-stat training caps for a scenario ({ Speed, Stamina, Power, Guts,
+// Intelligence }), before any spark cap-raise bonus. Used by the UI to show
+// "current / max" stat tiles (paired with deck.rawStats + getSparkCapBonus).
+export function getMaxStats(scenario) {
+  return TrainingData.getMaxStats(scenario)
+}
+
 // Builds a live DeckEvaluator from the lightweight deck-card records the UI
 // keeps in state ({ id, limitBreak }), skipping any that fail to instantiate
 // (e.g. stale ids) rather than throwing, so a bad deck doesn't blank the page.

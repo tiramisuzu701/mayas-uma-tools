@@ -680,6 +680,20 @@ button, input, select, textarea {
   color: #17132b;
 }
 
+/* Color modifiers - let a toggle-pill row pick a specific accent for its
+   active state (matches the reference site using a different color per
+   selector group, e.g. blue for race distance, green for running style),
+   instead of every group defaulting to the same pink/purple gradient. */
+.toggle-pill-blue.active {
+  background: var(--blue);
+  box-shadow: 0 0 14px -2px color-mix(in srgb, var(--blue) 70%, transparent);
+}
+
+.toggle-pill-green.active {
+  background: var(--green);
+  box-shadow: 0 0 14px -2px color-mix(in srgb, var(--green) 70%, transparent);
+}
+
 .scb-config-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -849,7 +863,7 @@ button, input, select, textarea {
   background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-card), 0 0 30px -10px color-mix(in srgb, var(--purple) 55%, transparent);
   padding: 14px;
   pointer-events: none;
 }
@@ -897,7 +911,7 @@ button, input, select, textarea {
 
 .scb-sparks-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
   gap: 10px;
 }
 
@@ -964,16 +978,373 @@ button, input, select, textarea {
 }
 
 .scb-collection-card {
+  --badge-color: var(--border);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
   padding: 10px 6px;
   border-radius: var(--radius-md);
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--badge-color) 45%, var(--border));
   background: var(--surface-alt);
+  box-shadow: 0 0 16px -8px color-mix(in srgb, var(--badge-color) 70%, transparent);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.scb-collection-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 20px -6px color-mix(in srgb, var(--badge-color) 80%, transparent);
 }
 
 .scb-collection-card-unowned {
   opacity: 0.55;
+}
+
+/* ---------- support card builder: modernized/glow redesign ---------- */
+
+/* Reusable icon-badge - a colored rounded square with an emoji/glyph, used
+   for stat tiles, the type filter row, and score-breakdown line items. Pass
+   --badge-color as an inline style; everything else (glow, sizing) reads
+   from it, so callers never need extra utility classes stacked on top. */
+.scb-icon-badge {
+  --badge-color: var(--purple);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  font-size: 1.1rem;
+  background: color-mix(in srgb, var(--badge-color) 22%, var(--surface-alt));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--badge-color) 45%, transparent) inset,
+    0 0 18px -4px color-mix(in srgb, var(--badge-color) 70%, transparent);
+  flex-shrink: 0;
+}
+
+.scb-icon-badge-sm {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+}
+
+/* Glowing card wrapper - a slightly brighter, glow-edged variant of .card
+   for the deck-builder's primary panels (config strip, stat preview, score
+   breakdown, tier list), matching the reference site's punchier look. */
+.scb-glow-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card), 0 0 40px -28px color-mix(in srgb, var(--purple) 60%, transparent);
+  position: relative;
+  overflow: hidden;
+}
+
+.scb-glow-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 12% -10%, color-mix(in srgb, var(--pink) 16%, transparent), transparent 55%),
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--blue) 14%, transparent), transparent 50%);
+  pointer-events: none;
+}
+
+/* ----- Deck Stat Preview ----- */
+
+.scb-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+}
+
+.scb-stat-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-soft);
+  background: var(--surface-alt);
+  text-align: center;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.scb-stat-tile:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--badge-color) 55%, var(--border));
+}
+
+.scb-stat-tile-label {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.scb-stat-tile-value {
+  font-size: 1.3rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.scb-stat-tile-max {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-faint);
+}
+
+.scb-stat-tile-delta {
+  font-size: 0.72rem;
+  color: var(--text-faint);
+}
+
+/* ----- Score Breakdown "receipt" ----- */
+
+.scb-score-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.scb-score-table th {
+  text-align: right;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  font-weight: 700;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.scb-score-table th:first-child,
+.scb-score-table td:first-child {
+  text-align: left;
+}
+
+.scb-score-table td {
+  padding: 8px;
+  text-align: right;
+}
+
+.scb-score-row-stat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.scb-score-subtotal td {
+  border-top: 2px solid var(--purple);
+  font-weight: 800;
+  padding-top: 12px;
+}
+
+.scb-score-penalty {
+  font-size: 0.82rem;
+  color: var(--blue);
+  padding: 6px 8px;
+}
+
+.scb-score-penalty-reason {
+  font-size: 0.74rem;
+  color: var(--text-faint);
+  padding: 0 8px 8px;
+}
+
+.scb-score-final {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
+  padding: 14px 18px;
+  border-radius: var(--radius-md);
+  font-weight: 800;
+  font-size: 1.05rem;
+  background: linear-gradient(120deg, color-mix(in srgb, var(--green) 20%, var(--surface-alt)), color-mix(in srgb, var(--blue) 14%, var(--surface-alt)));
+  box-shadow: 0 0 24px -8px color-mix(in srgb, var(--green) 55%, transparent);
+  color: var(--green);
+}
+
+/* ----- Type filter row (used by both the tier list and Collection Manager) ----- */
+
+.scb-type-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.scb-type-filter-btn {
+  --badge-color: var(--purple);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  font-size: 1.1rem;
+  background: color-mix(in srgb, var(--badge-color) 16%, var(--surface-alt));
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.scb-type-filter-btn:hover {
+  transform: translateY(-2px);
+}
+
+.scb-type-filter-btn.active {
+  border-color: var(--badge-color);
+  box-shadow: 0 0 16px -2px color-mix(in srgb, var(--badge-color) 75%, transparent);
+}
+
+/* ----- Global S-G tier list ----- */
+
+.scb-tier-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.scb-tier-row-badge {
+  --tier-color: var(--purple);
+  flex-shrink: 0;
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: #12101c;
+  background: var(--tier-color);
+  box-shadow: 0 0 22px -4px var(--tier-color);
+}
+
+.scb-tier-row-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.scb-tier-row-count {
+  font-size: 0.74rem;
+  color: var(--text-faint);
+  margin-bottom: 8px;
+}
+
+.scb-tier-row-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.scb-tier-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 96px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface-alt);
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.scb-tier-tile:hover:not(.scb-tier-tile-disabled) {
+  transform: translateY(-3px);
+  border-color: var(--purple);
+  box-shadow: 0 0 20px -6px color-mix(in srgb, var(--purple) 70%, transparent);
+}
+
+.scb-tier-tile-disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.scb-tier-tile-score {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 1;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 800;
+  color: #fff;
+  background: rgba(10, 8, 18, 0.78);
+  backdrop-filter: blur(2px);
+}
+
+.scb-tier-tile-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 5px 6px;
+}
+
+.scb-tier-tile-rarity {
+  font-size: 0.6rem;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 5px;
+  color: #12101c;
+}
+
+.scb-tier-tile-lb {
+  font-size: 0.6rem;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--surface-raised);
+  color: var(--text-dim);
+}
+
+.scb-tier-tile-disabled-reason {
+  font-size: 0.58rem;
+  text-align: center;
+  color: var(--text-faint);
+  padding: 0 4px 5px;
+}
+
+/* ----- misc glow touch-ups ----- */
+
+.scb-glow-btn {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--pink) 40%, transparent) inset;
+}
+
+.scb-mood-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #7c3aed, #2563eb, #22c55e, #eab308, #f97316, #ec4899);
+  outline: none;
+}
+
+.scb-mood-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #fff;
+  border: 3px solid var(--purple);
+  box-shadow: 0 0 10px -1px var(--purple);
+  cursor: pointer;
+}
+
+.scb-mood-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #fff;
+  border: 3px solid var(--purple);
+  box-shadow: 0 0 10px -1px var(--purple);
+  cursor: pointer;
 }

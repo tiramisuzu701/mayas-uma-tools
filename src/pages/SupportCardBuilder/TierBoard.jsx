@@ -1,18 +1,21 @@
 import { useMemo, useState } from 'react'
-import { GRADES, GRADE_COLORS } from '../../data/constants.js'
+import { GRADES } from '../../data/constants.js'
 import SupportCardArt from '../../components/SupportCardArt.jsx'
 import CardTooltip from './CardTooltip.jsx'
 import { SUPPORT_EFFECT_NAMES } from './engineBridge.js'
+import { TYPE_ICONS, TYPE_COLORS, TIER_COLORS, RARITY_COLORS } from './statTheme.js'
 
-// Fixed display order for card types - matches the order Tachyon's Lab's own
-// type selector uses. Any type not in this list (shouldn't happen with the
-// current card data, but keeps this future-proof) sorts alphabetically after.
+// Fixed display order for the card-type filter row - matches the order
+// Tachyon's Lab's own type selector uses. Any type not in this list
+// (shouldn't happen with the current card data, but keeps this
+// future-proof) sorts alphabetically after.
 const TYPE_ORDER = ['Speed', 'Stamina', 'Power', 'Guts', 'Wit', 'Support', 'Buddy']
 
 // Percentile cutoffs (of all cards' scores, across every type) used to band
 // cards into S-G tiers - same cutoffs Tachyon's Lab's TierlistDisplay.tsx
-// uses (5/15/30/50/70/85/95), just re-expressed against this site's existing
-// GRADES/GRADE_COLORS (already S-G, already used by Team Trials Builder).
+// uses (5/15/30/50/70/85/95). This is a single GLOBAL ranking across every
+// card type (not computed per-type), matching the reference site's one
+// combined S-G tier list.
 const PERCENTILE_CUTOFFS = { S: 5, A: 15, B: 30, C: 50, D: 70, E: 85, F: 95 }
 
 const HINT_TYPE_ORDER = ['Front Runner', 'Pace Chaser', 'Late Surger', 'End Closer', 'Sprint', 'Mile', 'Medium', 'Long']
@@ -43,13 +46,6 @@ function lbLabel(limitBreak) {
   return limitBreak === 4 ? 'MLB' : `${limitBreak}LB`
 }
 
-function orderedTypes(tierlist) {
-  const present = Object.keys(tierlist)
-  const known = TYPE_ORDER.filter((t) => present.includes(t))
-  const unknown = present.filter((t) => !TYPE_ORDER.includes(t)).sort()
-  return [...known, ...unknown]
-}
-
 function sortHintTypes(types) {
   return [...types].sort((a, b) => {
     const ia = HINT_TYPE_ORDER.indexOf(a)
@@ -67,10 +63,17 @@ export default function TierBoard({ tierlist, getCardDisabledInfo, onCardClick, 
   const [showOwnedOnly, setShowOwnedOnly] = useState(false)
   const [substatSlots, setSubstatSlots] = useState(['', '', '', ''])
   const [filtersOpen, setFiltersOpen] = useState(false)
+  const [typeFilter, setTypeFilter] = useState('All')
 
   const allEntries = useMemo(() => Object.values(tierlist).flat(), [tierlist])
   const assignTier = useMemo(() => buildTierAssigner(allEntries.map((c) => c.score)), [allEntries])
-  const types = useMemo(() => orderedTypes(tierlist), [tierlist])
+
+  const typesPresent = useMemo(() => {
+    const present = new Set(allEntries.map((c) => c.card_type))
+    const known = TYPE_ORDER.filter((t) => present.has(t))
+    const unknown = [...present].filter((t) => !TYPE_ORDER.includes(t)).sort()
+    return [...known, ...unknown]
+  }, [allEntries])
 
   const allHintTypes = useMemo(() => {
     const set = new Set()
@@ -150,12 +153,14 @@ export default function TierBoard({ tierlist, getCardDisabledInfo, onCardClick, 
     setHintTypeFilters(new Set())
     setShowOwnedOnly(false)
     setSubstatSlots(['', '', '', ''])
+    setTypeFilter('All')
   }
 
   // Substats are visual-only (badges on each tile) - they never remove a
   // card from the list, matching the original ("Filters are visual only
   // and don't affect scoring or tier placement").
   function passesFilters(card) {
+    if (typeFilter !== 'All' && card.card_type !== typeFilter) return false
     const rarity = card.card_rarity
     if (limitBreakFilter[rarity] && !limitBreakFilter[rarity].includes(card.limit_break)) return false
     if (hintTypeFilters.size > 0) {
@@ -169,19 +174,74 @@ export default function TierBoard({ tierlist, getCardDisabledInfo, onCardClick, 
     return true
   }
 
-  if (types.length === 0) {
+  if (allEntries.length === 0) {
     return <p className="empty-state">No cards to show.</p>
   }
 
+  // Bucket every card into its global S-G tier, most-impressive tier first,
+  // and drop any tier that ends up empty once filters are applied - one
+  // combined ranking across every card type, matching the reference site's
+  // tier-list layout (rather than a separate ranking per type).
+  const tiers = GRADES.map((grade) => {
+    const cards = allEntries
+      .filter((c) => assignTier(c.score) === grade && passesFilters(c))
+      .sort((a, b) => b.score - a.score)
+    return { grade, cards }
+  }).filter((t) => t.cards.length > 0)
+
+  const visibleCount = tiers.reduce((sum, t) => sum + t.cards.length, 0)
+
   return (
     <div>
-      <div className="card" style={{ padding: 16, marginBottom: 20 }}>
-        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setFiltersOpen((v) => !v)}>
-          {filtersOpen ? 'Hide filters ▲' : 'Show filters ▼'}
-        </button>
+      <div className="scb-glow-card" style={{ padding: 20, marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, position: 'relative' }}>
+          <div>
+            <h3 style={{ fontSize: '1rem', marginBottom: 4 }}>Tierlist Visualization</h3>
+            <p className="field-hint" style={{ margin: 0 }}>
+              Cards are ranked by how much each would improve your current deck. Higher scores generally mean
+              better performance - the numbers aren't related to the in-game grading you receive after a race.
+            </p>
+          </div>
+          <span className="pill" style={{ whiteSpace: 'nowrap' }}>
+            Showing {visibleCount} of {allEntries.length}
+          </span>
+        </div>
+
+        <div style={{ marginTop: 16, marginBottom: 4, position: 'relative' }}>
+          <label style={{ marginBottom: 8, display: 'block' }}>Card type</label>
+          <div className="scb-type-filter-row">
+            <button
+              type="button"
+              className={`scb-type-filter-btn ${typeFilter === 'All' ? 'active' : ''}`}
+              style={{ '--badge-color': 'var(--purple)' }}
+              onClick={() => setTypeFilter('All')}
+              title="All types"
+            >
+              ✦
+            </button>
+            {typesPresent.map((t) => (
+              <button
+                key={t}
+                type="button"
+                className={`scb-type-filter-btn ${typeFilter === t ? 'active' : ''}`}
+                style={{ '--badge-color': TYPE_COLORS[t] || 'var(--purple)' }}
+                onClick={() => setTypeFilter(t)}
+                title={t}
+              >
+                {TYPE_ICONS[t] || '◆'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ marginTop: 14, position: 'relative' }}>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setFiltersOpen((v) => !v)}>
+            {filtersOpen ? 'Hide filters ▲' : 'Show filters ▼'}
+          </button>
+        </div>
 
         {filtersOpen && (
-          <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 16, position: 'relative' }}>
             <div>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', cursor: 'pointer' }}>
                 <input type="checkbox" checked={showOwnedOnly} onChange={(e) => toggleShowOwnedOnly(e.target.checked)} />
@@ -204,7 +264,7 @@ export default function TierBoard({ tierlist, getCardDisabledInfo, onCardClick, 
                       {[0, 1, 2, 3, 4].map((lb) => (
                         <label
                           key={lb}
-                          className={`toggle-pill ${limitBreakFilter[rarity].includes(lb) ? 'active' : ''}`}
+                          className={`toggle-pill toggle-pill-blue ${limitBreakFilter[rarity].includes(lb) ? 'active' : ''}`}
                           style={{ cursor: 'pointer' }}
                         >
                           <input
@@ -230,7 +290,7 @@ export default function TierBoard({ tierlist, getCardDisabledInfo, onCardClick, 
                     <button
                       key={h}
                       type="button"
-                      className={`toggle-pill ${hintTypeFilters.has(h) ? 'active' : ''}`}
+                      className={`toggle-pill toggle-pill-green ${hintTypeFilters.has(h) ? 'active' : ''}`}
                       onClick={() => toggleHintType(h)}
                     >
                       {h}
@@ -262,55 +322,56 @@ export default function TierBoard({ tierlist, getCardDisabledInfo, onCardClick, 
             </div>
 
             <div>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={clearFilters}>Clear all filters</button>
+              <button type="button" className="btn btn-danger btn-sm" onClick={clearFilters}>Clear all filters</button>
             </div>
           </div>
         )}
       </div>
 
-      {types.map((type) => {
-        const cardsOfType = tierlist[type].filter(passesFilters)
-        if (cardsOfType.length === 0) return null
-        return (
-          <div key={type} className="scb-tier-type-section">
-            <div className="scb-tier-type-heading">
-              <h3 style={{ margin: 0, fontSize: '1rem' }}>{type}</h3>
-              <span className="pill">{cardsOfType.length} cards</span>
+      {tiers.map(({ grade, cards }) => (
+        <div key={grade} className="scb-tier-row">
+          <div className="scb-tier-row-badge" style={{ '--tier-color': TIER_COLORS[grade] || 'var(--purple)' }}>
+            {grade}
+          </div>
+          <div className="scb-tier-row-body">
+            <div className="scb-tier-row-count">
+              {cards.length} card{cards.length === 1 ? '' : 's'} • Score range: {cards[cards.length - 1].score.toFixed(0)} - {cards[0].score.toFixed(0)}
             </div>
-            <div className="scb-tier-grid">
-              {cardsOfType.map((card) => {
-                const tier = assignTier(card.score)
+            <div className="scb-tier-row-cards">
+              {cards.map((card) => {
                 const disabledInfo = getCardDisabledInfo(card)
                 return (
                   <CardTooltip key={`${card.id}-${card.limit_break}`} card={card} disabled={disabledInfo.disabled}>
                     <button
                       type="button"
-                      className={`scb-tier-card ${disabledInfo.disabled ? 'scb-tier-card-disabled' : ''}`}
+                      className={`scb-tier-tile ${disabledInfo.disabled ? 'scb-tier-tile-disabled' : ''}`}
                       disabled={disabledInfo.disabled}
                       onClick={() => onCardClick(card)}
                       title={`${card.card_name} (${card.card_rarity} ${lbLabel(card.limit_break)}) - score ${card.score.toFixed(1)}`}
                     >
-                      <span className="scb-tier-badge" style={{ background: GRADE_COLORS[tier] }}>
-                        {tier}
-                      </span>
+                      <span className="scb-tier-tile-score">{card.score.toFixed(0)}</span>
                       {substatsToDisplay.map(({ effectName, slot, color }) => (
                         <span
                           key={slot}
                           className="scb-substat-badge"
-                          style={{ top: 6 + slot * 20, background: color }}
+                          style={{ top: 6 + slot * 20, left: 6, right: 'auto', background: color }}
                           title={effectName}
                         >
                           {Math.round(card.support_effects?.[effectName] || 0)}
                         </span>
                       ))}
-                      <SupportCardArt cardId={card.id} name={card.card_name} width={72} />
-                      <span className="scb-tier-card-name">{card.card_name}</span>
-                      <span className="pill">
-                        {card.card_rarity} {lbLabel(card.limit_break)}
-                      </span>
-                      <span className="scb-tier-card-score">{card.score.toFixed(1)}</span>
+                      <SupportCardArt cardId={card.id} name={card.card_name} width={96} />
+                      <div className="scb-tier-tile-footer">
+                        <span
+                          className="scb-tier-tile-rarity"
+                          style={{ background: RARITY_COLORS[card.card_rarity] || 'var(--border)' }}
+                        >
+                          {card.card_rarity}
+                        </span>
+                        <span className="scb-tier-tile-lb">{lbLabel(card.limit_break)}</span>
+                      </div>
                       {disabledInfo.disabled && (
-                        <span className="scb-tier-card-disabled-reason">{disabledInfo.reason}</span>
+                        <span className="scb-tier-tile-disabled-reason">{disabledInfo.reason}</span>
                       )}
                     </button>
                   </CardTooltip>
@@ -318,8 +379,8 @@ export default function TierBoard({ tierlist, getCardDisabledInfo, onCardClick, 
               })}
             </div>
           </div>
-        )
-      })}
+        </div>
+      ))}
     </div>
   )
 }

@@ -4,12 +4,15 @@ import TierBoard from './TierBoard.jsx'
 import BlueSparksSelector from './BlueSparksSelector.jsx'
 import TrainingDistributionSelector from './TrainingDistributionSelector.jsx'
 import CollectionManager from './CollectionManager.jsx'
+import DeckStatPreview from './DeckStatPreview.jsx'
 import {
   getScenarios,
   getDefaultOptionalRaces,
   generateTierlist,
   getCalculatedDistribution,
   getSparkCapBonus,
+  getSparkFlatStats,
+  getMaxStats,
   cardsData,
   MAX_SPARKS,
   FULL_LIMIT_BREAK_FILTER,
@@ -60,6 +63,8 @@ export default function SupportCardBuilder() {
   }, [sparks])
 
   const sparkBonuses = useMemo(() => getSparkCapBonus(sparks), [sparks])
+  const sparkFlatStats = useMemo(() => getSparkFlatStats(sparks), [sparks])
+  const maxStats = useMemo(() => getMaxStats(scenario), [scenario])
 
   // The deck's own auto-calculated training distribution, recomputed
   // whenever the deck or scenario changes - shown for reference, and used
@@ -230,8 +235,14 @@ export default function SupportCardBuilder() {
         <CollectionManager cardsData={cardsData} ownedCards={ownedCards} onChangeOwnedCards={setOwnedCards} />
       ) : (
         <>
-          <div className="card" style={{ padding: 20, marginBottom: 24 }}>
-            <div className="scb-config-grid">
+          <div className="scb-glow-card" style={{ padding: 20, marginBottom: 20 }}>
+            <h3 style={{ fontSize: '1rem', marginBottom: 4, position: 'relative' }}>Generate Tierlist</h3>
+            <p className="field-hint" style={{ marginBottom: 16, position: 'relative' }}>
+              Configure the race distance and running style for your deck. These settings directly affect the
+              grading and ranking of each support card.
+            </p>
+
+            <div className="scb-config-grid" style={{ position: 'relative' }}>
               <div className="field">
                 <label>Race distance</label>
                 <div className="toggle-pill-row">
@@ -239,7 +250,7 @@ export default function SupportCardBuilder() {
                     <button
                       key={d}
                       type="button"
-                      className={`toggle-pill ${distances[d] ? 'active' : ''}`}
+                      className={`toggle-pill toggle-pill-blue ${distances[d] ? 'active' : ''}`}
                       onClick={() => toggleDistance(d)}
                     >
                       {d}
@@ -255,7 +266,7 @@ export default function SupportCardBuilder() {
                     <button
                       key={s}
                       type="button"
-                      className={`toggle-pill ${runningStyles[s] ? 'active' : ''}`}
+                      className={`toggle-pill toggle-pill-green ${runningStyles[s] ? 'active' : ''}`}
                       onClick={() => toggleRunningStyle(s)}
                     >
                       {s}
@@ -263,9 +274,71 @@ export default function SupportCardBuilder() {
                   ))}
                 </div>
               </div>
+            </div>
 
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, position: 'relative' }}>
+              <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-dim)' }}>
+                Deck ({deckCards.length}/{MAX_DECK_SIZE})
+              </label>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={clearDeck} disabled={deckCards.length === 0}>
+                Clear deck
+              </button>
+            </div>
+
+            {deckCards.length === 0 ? (
+              <div className="empty-state" style={{ position: 'relative' }}>
+                <div style={{ fontSize: '2.2rem', marginBottom: 8 }}>🎴</div>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>No cards in deck</div>
+                <div>Generate a tierlist below and click on cards to add them to your deck (max 6 cards)</div>
+              </div>
+            ) : (
+              <div className="scb-deck-row" style={{ position: 'relative' }}>
+                {deckCards.map((c) => (
+                  <div key={c.id} className="scb-deck-slot">
+                    <button
+                      type="button"
+                      className="scb-deck-slot-remove"
+                      onClick={() => removeCard(c.id)}
+                      aria-label={`Remove ${c.cardName}`}
+                      title="Remove from deck"
+                    >
+                      ✕
+                    </button>
+                    <SupportCardArt cardId={c.id} name={c.cardName} width={96} />
+                    <div className="scb-deck-slot-label">
+                      {c.cardName} ({c.cardRarity} {c.limitBreak === 4 ? 'MLB' : `${c.limitBreak}LB`})
+                    </div>
+                  </div>
+                ))}
+                {Array.from({ length: MAX_DECK_SIZE - deckCards.length }).map((_, i) => (
+                  <div key={`empty-${i}`} className="scb-deck-slot-empty">
+                    Click a card below to add it
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <TrainingDistributionSelector
+            calculatedDistribution={calculatedDistribution}
+            manualDistribution={manualDistribution}
+            isManual={isManualDistribution}
+            onToggleManual={handleToggleManualDistribution}
+            onManualDistributionChange={setManualDistribution}
+          />
+
+          <BlueSparksSelector
+            sparks={sparks}
+            sparkBonuses={sparkBonuses}
+            sparkFlatStats={sparkFlatStats}
+            maxSparks={MAX_SPARKS}
+            onChange={setSparks}
+          />
+
+          <div className="scb-glow-card" style={{ padding: 20, marginBottom: 24 }}>
+            <div className="scb-config-grid" style={{ marginBottom: 0, position: 'relative' }}>
               <div className="field">
-                <label htmlFor="scb-scenario">Training scenario</label>
+                <label htmlFor="scb-scenario">Scenario</label>
                 <select id="scb-scenario" value={scenario} onChange={(e) => setScenario(e.target.value)}>
                   {scenarios.map((s) => (
                     <option key={s.key} value={s.key}>
@@ -277,7 +350,7 @@ export default function SupportCardBuilder() {
 
               <div className="field">
                 <label htmlFor="scb-mood">
-                  Average mood: {mood > 0 ? '+' : ''}
+                  Average Mood: {mood > 0 ? '+' : ''}
                   {mood}%
                 </label>
                 <input
@@ -288,6 +361,7 @@ export default function SupportCardBuilder() {
                   step="1"
                   value={mood}
                   onChange={(e) => setMood(parseInt(e.target.value, 10))}
+                  className="scb-mood-slider"
                 />
               </div>
 
@@ -315,52 +389,13 @@ export default function SupportCardBuilder() {
                 </div>
               </div>
             </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-              <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-dim)' }}>
-                Deck ({deckCards.length}/{MAX_DECK_SIZE})
-              </label>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={clearDeck} disabled={deckCards.length === 0}>
-                Clear deck
-              </button>
-            </div>
-            <div className="scb-deck-row">
-              {deckCards.map((c) => (
-                <div key={c.id} className="scb-deck-slot">
-                  <button
-                    type="button"
-                    className="scb-deck-slot-remove"
-                    onClick={() => removeCard(c.id)}
-                    aria-label={`Remove ${c.cardName}`}
-                    title="Remove from deck"
-                  >
-                    ✕
-                  </button>
-                  <SupportCardArt cardId={c.id} name={c.cardName} width={96} />
-                  <div className="scb-deck-slot-label">
-                    {c.cardName} ({c.cardRarity} {c.limitBreak === 4 ? 'MLB' : `${c.limitBreak}LB`})
-                  </div>
-                </div>
-              ))}
-              {Array.from({ length: MAX_DECK_SIZE - deckCards.length }).map((_, i) => (
-                <div key={`empty-${i}`} className="scb-deck-slot-empty">
-                  Click a card below to add it
-                </div>
-              ))}
-            </div>
           </div>
 
-          <BlueSparksSelector sparks={sparks} sparkBonuses={sparkBonuses} maxSparks={MAX_SPARKS} onChange={setSparks} />
-
-          <TrainingDistributionSelector
-            calculatedDistribution={calculatedDistribution}
-            manualDistribution={manualDistribution}
-            isManual={isManualDistribution}
-            onToggleManual={handleToggleManualDistribution}
-            onManualDistributionChange={setManualDistribution}
-          />
-
           {isGenerating && <p className="field-hint">Calculating...</p>}
+
+          {!isGenerating && success && deckCards.length > 0 && (
+            <DeckStatPreview deck={tierlistResult.deck} maxStats={maxStats} sparkCapBonus={sparkBonuses} />
+          )}
 
           {!isGenerating && success && (
             <TierBoard

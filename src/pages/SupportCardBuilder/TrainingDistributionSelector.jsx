@@ -1,11 +1,4 @@
-const STATS = ['Speed', 'Stamina', 'Power', 'Guts', 'Wit']
-const STAT_COLORS = {
-  Speed: 'var(--pink)',
-  Stamina: 'var(--green)',
-  Power: 'var(--amber)',
-  Guts: 'var(--red)',
-  Wit: 'var(--blue)',
-}
+import { STAT_KEYS, statIcon, statColor } from './statTheme.js'
 
 // Lets you override where training turns get spent, instead of the deck's
 // own auto-calculated distribution (which comes from each card's Specialty
@@ -25,41 +18,46 @@ export default function TrainingDistributionSelector({ calculatedDistribution, m
   }
 
   return (
-    <div className="card" style={{ padding: 16, marginBottom: 20 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-dim)' }}>Training distribution</label>
+    <div className="scb-glow-card" style={{ padding: 16, marginBottom: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, position: 'relative' }}>
+        <h3 style={{ fontSize: '0.95rem', margin: 0 }}>Training Distribution</h3>
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', cursor: 'pointer' }}>
           <input type="checkbox" checked={isManual} onChange={(e) => onToggleManual(e.target.checked)} />
           Manual override
         </label>
       </div>
 
-      {STATS.map((stat, i) => {
-        const pct = current[i] * 100
-        return (
-          <div key={stat} className="scb-dist-row">
-            <span className="scb-dist-label">{stat}</span>
-            <div className="scb-dist-bar">
-              <div className="scb-dist-bar-fill" style={{ width: `${pct}%`, background: STAT_COLORS[stat] }} />
+      <div style={{ position: 'relative' }}>
+        {STAT_KEYS.map((stat, i) => {
+          const pct = current[i] * 100
+          return (
+            <div key={stat} className="scb-dist-row">
+              <span className="scb-icon-badge scb-icon-badge-sm" style={{ '--badge-color': statColor(stat) }}>
+                {statIcon(stat)}
+              </span>
+              <span className="scb-dist-label">{stat}</span>
+              <div className="scb-dist-bar">
+                <div className="scb-dist-bar-fill" style={{ width: `${pct}%`, background: statColor(stat) }} />
+              </div>
+              {isManual ? (
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={Math.round(pct)}
+                  onChange={(e) => handleInputChange(i, e.target.value)}
+                  className="scb-dist-input"
+                />
+              ) : (
+                <span className="scb-dist-value">{pct.toFixed(1)}%</span>
+              )}
             </div>
-            {isManual ? (
-              <input
-                type="number"
-                min="0"
-                max="100"
-                value={Math.round(pct)}
-                onChange={(e) => handleInputChange(i, e.target.value)}
-                className="scb-dist-input"
-              />
-            ) : (
-              <span className="scb-dist-value">{pct.toFixed(1)}%</span>
-            )}
-          </div>
-        )
-      })}
+          )
+        })}
+      </div>
 
       {isManual && (
-        <div className="field-hint" style={{ textAlign: 'right', marginTop: 6 }}>
+        <div className="field-hint" style={{ textAlign: 'right', marginTop: 6, position: 'relative' }}>
           Normalized automatically to 100%
         </div>
       )}

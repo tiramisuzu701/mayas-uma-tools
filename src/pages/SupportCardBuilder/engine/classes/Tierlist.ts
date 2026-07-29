@@ -25,6 +25,10 @@ interface TierlistDeck {
     cards: TierlistCard[];
     score: number;
     stats: StatsDict;
+    // Absolute totals from this deck's own simulated training career (not a
+    // delta from an empty deck, unlike `stats` above) - exposed so the UI can
+    // show "current / max" stat tiles the way Tachyon's Lab's UI does.
+    rawStats?: StatsDict;
     hints?: HintResult;
     scoreBreakdown?: {
         totalScore: number;
@@ -335,6 +339,7 @@ export class Tierlist {
 
         // Calculate deck stats delta
         deck.stats = this.calculateStatsDelta(baseResultForDeck, baseResultEmptyDeck);
+        deck.rawStats = baseResultForDeck;
         deck.hints = hintsForDeck;
 
         // Calculate deck score using delta stats (consistent with individual card scoring)

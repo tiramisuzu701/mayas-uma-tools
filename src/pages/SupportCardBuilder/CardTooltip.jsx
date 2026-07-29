@@ -39,7 +39,7 @@ function formatStatChange(value, statName) {
   if (!value) return null
   const sign = value > 0 ? '+' : ''
   const label = statName === 'Skill Points' ? 'SP' : statName.slice(0, 3).toUpperCase()
-  return `${sign}${Math.round(value)} ${label}`
+  return { text: `${sign}${Math.round(value)} ${label}`, positive: value > 0 }
 }
 
 // Hover (or tap, on touch devices) tooltip showing a card's hint types, gold
@@ -196,11 +196,19 @@ export default function CardTooltip({ card, disabled, children }) {
 
             {deltaPills.length > 0 && (
               <div className="scb-tooltip-section">
-                <div className="field-hint" style={{ marginBottom: 6 }}>Adds to your deck</div>
+                <div className="field-hint" style={{ marginBottom: 6 }}>Stat changes</div>
                 <div className="toggle-pill-row">
-                  {deltaPills.map((p) => (
-                    <span key={p} className="pill" style={{ color: p.startsWith('+') ? 'var(--green)' : 'var(--red)' }}>
-                      {p}
+                  {deltaPills.map(({ text, positive }) => (
+                    <span
+                      key={text}
+                      className="pill"
+                      style={{
+                        background: positive ? 'color-mix(in srgb, var(--green) 25%, var(--surface-alt))' : 'color-mix(in srgb, var(--red) 25%, var(--surface-alt))',
+                        borderColor: positive ? 'var(--green)' : 'var(--red)',
+                        color: positive ? 'var(--green)' : 'var(--red)',
+                      }}
+                    >
+                      {text}
                     </span>
                   ))}
                 </div>
