@@ -1,4 +1,5 @@
 import { parseSignedInt } from "../utils/helpers";
+import { TrainingData } from "../config/trainingData";
 import {
     CardData,
     CardBonus,
@@ -132,12 +133,19 @@ export class SupportCard {
     }
 
     private evalStatArray(statDict: StatsDict): number {
+        // BUGFIX: this weights table previously used the key "Intelligence",
+        // but every stat dict built in findBestEventChoice (below) uses "Wit"
+        // (e.g. groupStats["Wit"]) - the mismatch meant Wit rewards were
+        // always read as 0 here, so an event choice that only gave Wit could
+        // never be recognized as the best choice (and if every choice on a
+        // Wit-only event evaluated to 0, the reward was dropped entirely,
+        // since bestEval starts at 0 and only a strictly-greater eval wins).
         const weights = {
             Speed: 1,
             Stamina: 1,
             Power: 1,
             Guts: 1,
-            Intelligence: 1,
+            Wit: 1,
             Energy: 2,
             Potential: 0.2, // Skill points
             Bond: 0,
@@ -481,11 +489,25 @@ export class SupportCard {
         optionalRaces: {G1: number, G2or3: number, PreOPorOP: number} = {G1: 0, G2or3: 0, PreOPorOP: 0},
         deckStats?: {Speed: number, Stamina: number, Power: number, Guts: number, Wit: number},
         statWeights?: {Speed: number, Stamina: number, Power: number, Guts: number, Wit: number},
+        scenarioName: string = "URA",
     ): HintResult {
         const totalOptionalRaces = optionalRaces.G1 + optionalRaces.G2or3 + optionalRaces.PreOPorOP;
-        const maxTrainingTurns = 72 + 6 - 11 - totalOptionalRaces;
+        // BUGFIX: this hardcoded "11" as the forced-race count for every
+        // scenario. The actual per-scenario forced-race count (used
+        // identically in DeckEvaluator.evaluateStats via the same formula)
+        // is 0 for MANT, 8 for URA/Unity, and 5 for Grand Concert - never
+        // 11 - so hint-turn counts (and therefore hint-derived score) were
+        // undercounted by 3-11 turns out of ~70-78 in every scenario.
+        const forcedRaces = TrainingData.getForcedRaces(scenarioName);
+        const maxTrainingTurns = 72 + 6 - forcedRaces - totalOptionalRaces;
+        // BUGFIX: "-1" means "this card has no Hint Frequency effect," not
+        // "a literal -1% bonus" (every other cardBonus consumer in this
+        // codebase guards this sentinel; this line didn't). ~39% of cards
+        // have no Hint Frequency effect and were getting hintFreq=0.07425
+        // instead of the correct default of 0.075.
+        const hintFrequencyBonus = this.cardBonus["Hint Frequency"] !== -1 ? this.cardBonus["Hint Frequency"] : 0;
         const hintFreq =
-            (0.075 * (this.cardBonus["Hint Frequency"] + 100)) / 100;
+            (0.075 * (hintFrequencyBonus + 100)) / 100;
         const hintFromEvents = this.eventsStatReward["Skill Hint"] || 0;
 
         let hintLevels = this.cardBonus["Hint Levels"];

@@ -141,6 +141,7 @@ export class Tierlist {
         optionalRaces: {G1: number, G2or3: number, PreOPorOP: number} = {G1: 0, G2or3: 0, PreOPorOP: 0},
         averageMood: number = 15,
         sparkCapBonus: Record<string, number> = {},
+        sparkFlatStats: Record<string, number> = {},
     ): TierlistResponse {
         // Default race types
         if (!raceTypes) {
@@ -289,7 +290,8 @@ export class Tierlist {
                         Power: weights.Power || 0,
                         Guts: weights.Guts || 0,
                         Wit: weights.Wit || 0,
-                    }
+                    },
+                    scenarioName,
                 );
                 deck.cards.push({
                     id: card.id,
@@ -298,15 +300,20 @@ export class Tierlist {
                     card_rarity:
                         Tierlist.rarityToSymbol[card.rarity] || "Unknown",
                     limit_break: card.limitBreak,
-                    card_type: card.cardType.type,
+                    // BUGFIX: card_type here previously kept the raw "Intelligence"
+                    // value while the ranked tierlist grouping below (see cardType
+                    // assignment near "prefered_type") already substitutes "Wit" -
+                    // this made the two card_type values inconsistent within the
+                    // same response for the same underlying stat.
+                    card_type: card.cardType.type === "Intelligence" ? "Wit" : card.cardType.type,
                     hints: hintForCard,
                 });
             }
 
             // This matches the Python bug where these lines are inside the loop
             hintsForDeck = deckObject.evaluateHints(
-                raceTypesArray, 
-                runningTypesArray, 
+                raceTypesArray,
+                runningTypesArray,
                 optionalRaces,
                 {
                     Speed: baseResultForDeck.Speed || 0,
@@ -321,7 +328,8 @@ export class Tierlist {
                     Power: weights.Power || 0,
                     Guts: weights.Guts || 0,
                     Wit: weights.Wit || 0,
-                }
+                },
+                scenarioName,
             );
         }
 
@@ -339,6 +347,7 @@ export class Tierlist {
             ACTIVE_PENALTY_CONFIG,
             scenarioName,
             sparkCapBonus,
+            sparkFlatStats,
         );
 
         // Generate score breakdown for the deck using the delta stats
@@ -351,6 +360,7 @@ export class Tierlist {
             ACTIVE_PENALTY_CONFIG,
             scenarioName,
             sparkCapBonus,
+            sparkFlatStats,
         );
 
         const results: TierlistEntry[] = [];
@@ -401,7 +411,8 @@ export class Tierlist {
                             Power: weights.Power || 0,
                             Guts: weights.Guts || 0,
                             Wit: weights.Wit || 0,
-                        }
+                        },
+                        scenarioName,
                     );
                     const deckHints = tempDeck.evaluateHints(
                         raceTypesArray,
@@ -420,7 +431,8 @@ export class Tierlist {
                             Power: weights.Power || 0,
                             Guts: weights.Guts || 0,
                             Wit: weights.Wit || 0,
-                        }
+                        },
+                        scenarioName,
                     );
 
                     // Calculate delta from empty deck (consistent with deck.score calculation)
@@ -436,6 +448,7 @@ export class Tierlist {
                         ACTIVE_PENALTY_CONFIG,
                         scenarioName,
                         sparkCapBonus,
+                        sparkFlatStats,
                     );
 
                     // The card's actual impact is the difference between new deck score and current deck score
@@ -535,11 +548,13 @@ export class Tierlist {
             score += v * weight;
         }
 
-        // Add hints contribution using direct weight, multiplied by useful hints rate
+        // Add hints contribution using direct weight.
+        // BUGFIX: was also multiplying by useful_hints_rate here, but total_hints
+        // (from SupportCard.evaluateCardHints) is already rate-scaled - this was
+        // effectively squaring the useful-hints-rate term, under-scoring hint value.
         const totalHints = hintDict.total_hints || 0;
-        const usefulHintsRate = hintDict.useful_hints_rate || 0;
         const hintsWeight = weightsCopy["Hints"] || 4.0;
-        score += totalHints * usefulHintsRate * hintsWeight;
+        score += totalHints * hintsWeight;
 
         // Add gold skills contribution
         const goldSkills = hintDict.gold_skills || [];
@@ -560,6 +575,7 @@ export class Tierlist {
         penaltyConfig: PenaltyConfig = ACTIVE_PENALTY_CONFIG,
         scenarioName: string = "URA",
         sparkCapBonus: Record<string, number> = {},
+        sparkFlatStats: Record<string, number> = {},
     ): number {
         // Apply the soft-cap rules to stats before calculating score.
         // Gains above 1200 are halved; gains above the scenario max are clamped.
@@ -568,20 +584,32 @@ export class Tierlist {
         const clampedRawStats = { ...rawStats };
         const clampedDeltaStats = { ...deltaStats };
 
-        // Apply soft cap
+        // Apply soft cap.
+        // BUGFIX: blue-spark flat-stat bonuses (sparkFlatStats) were computed
+        // elsewhere but never threaded into this scoring path, so they had no
+        // effect on score. They're folded into the raw stat BEFORE the soft-cap
+        // threshold check (matching how the game actually applies flat stat boosts
+        // before diminishing returns kick in above 1200), then the same delta
+        // adjustment as before is applied on top of that. When sparkFlatStats is
+        // empty/zero this reduces to exactly the previous behavior.
         for (const stat of ["Speed", "Stamina", "Power", "Guts", "Wit"] as const) {
             const statKey = stat === "Wit" ? "Intelligence" : stat;
             const maxVal = (maxStats[statKey] || 1200) + (sparkCapBonus[statKey] || 0);
-            const currentVal = rawStats[stat] || 0;
+            const flatBonus = sparkFlatStats[statKey] || 0;
+            const currentVal = (rawStats[stat] || 0) + flatBonus;
+
+            clampedRawStats[stat] = currentVal;
+            let adjustedDelta = (deltaStats[stat] || 0) + flatBonus;
 
             if (currentVal > TrainingData.SOFT_STAT_CAP) {
                 const effectiveVal = TrainingData.getEffectiveStat(currentVal, maxVal);
                 clampedRawStats[stat] = effectiveVal;
                 // Adjust delta: newDelta = effectiveTotal - base
                 // base = currentTotal - currentDelta
-                const baseVal = currentVal - (deltaStats[stat] || 0);
-                clampedDeltaStats[stat] = effectiveVal - baseVal;
+                const baseVal = currentVal - adjustedDelta;
+                adjustedDelta = effectiveVal - baseVal;
             }
+            clampedDeltaStats[stat] = adjustedDelta;
         }
 
         // Get base score from clamped delta stats
@@ -658,9 +686,14 @@ export class Tierlist {
         // Apply additive penalties (like taxes)
         const totalPenaltyPercent =
             staminaPenaltyPercent + speedPenaltyPercent + raceBonusPenaltyPercent;
-        const finalMultiplier = 1.0 - totalPenaltyPercent;
 
-        const finalScore = baseScore * finalMultiplier;
+        // BUGFIX: was `baseScore * (1 - totalPenaltyPercent)`, which inverts the
+        // penalty direction whenever baseScore is negative (reachable since delta
+        // stats can go negative from training-distribution shifts) - a "penalty"
+        // would then make the score less negative, i.e. better. Subtracting the
+        // penalty from the magnitude always makes the score worse, regardless of
+        // sign.
+        const finalScore = baseScore - Math.abs(baseScore) * totalPenaltyPercent;
 
         return finalScore;
     }
@@ -674,6 +707,7 @@ export class Tierlist {
         penaltyConfig: PenaltyConfig = ACTIVE_PENALTY_CONFIG,
         scenarioName: string = "URA",
         sparkCapBonus: Record<string, number> = {},
+        sparkFlatStats: Record<string, number> = {},
     ): {
         totalScore: number;
         baseScore: number;
@@ -716,19 +750,24 @@ export class Tierlist {
 
         const clampedDeltaStats = { ...deltaStats };
 
-        // Apply soft cap to delta stats for breakdown
+        // Apply soft cap to delta stats for breakdown.
+        // BUGFIX: see resultsWithPenaltyToScore - fold sparkFlatStats into the raw
+        // stat before the soft-cap check so blue-spark flat bonuses actually affect
+        // the score breakdown too. Behavior-preserving when sparkFlatStats is
+        // empty/zero.
         for (const stat of ["Speed", "Stamina", "Power", "Guts", "Wit"] as const) {
             const statKey = stat === "Wit" ? "Intelligence" : stat;
             const maxVal = (maxStats[statKey] || 1200) + (sparkCapBonus[statKey] || 0);
-            const currentVal = rawStats[stat] || 0;
+            const flatBonus = sparkFlatStats[statKey] || 0;
+            const currentVal = (rawStats[stat] || 0) + flatBonus;
 
+            let adjustedDelta = (deltaStats[stat] || 0) + flatBonus;
             if (currentVal > TrainingData.SOFT_STAT_CAP) {
                 const effectiveVal = TrainingData.getEffectiveStat(currentVal, maxVal);
-                // Adjust delta: newDelta = effectiveTotal - base
-                // base = currentTotal - currentDelta
-                const baseVal = currentVal - (deltaStats[stat] || 0);
-                clampedDeltaStats[stat] = effectiveVal - baseVal;
+                const baseVal = currentVal - adjustedDelta;
+                adjustedDelta = effectiveVal - baseVal;
             }
+            clampedDeltaStats[stat] = adjustedDelta;
         }
 
         // Calculate base score using clamped delta stats
@@ -747,10 +786,13 @@ export class Tierlist {
             });
         }
 
-        // Add hints contribution to stat contributions, multiplied by useful hints rate
+        // Add hints contribution to stat contributions.
+        // BUGFIX: was also multiplying by useful_hints_rate here, but total_hints
+        // is already rate-scaled (see resultsToScore) - kept usefulHintsRate itself
+        // for the display-only penalty-reason string below.
         const totalHints = hintDict.total_hints || 0;
         const usefulHintsRate = hintDict.useful_hints_rate || 0;
-        const usefulHintsCount = Math.round(totalHints * usefulHintsRate);
+        const usefulHintsCount = Math.round(totalHints);
         const hintsWeight = weights["Hints"] || 4.0;
         const hintsContribution = usefulHintsCount * hintsWeight;
         statContributions.push({
@@ -870,8 +912,9 @@ export class Tierlist {
         // Apply additive penalties (like taxes)
         const totalPenaltyPercent =
             staminaPenaltyPercent + speedPenaltyPercent + statOverbuiltPenaltyPercent + raceBonusPenaltyPercent;
-        const finalMultiplier = 1.0 - totalPenaltyPercent;
-        const totalScore = baseScore * finalMultiplier;
+        // BUGFIX: see resultsWithPenaltyToScore - multiplying by (1 - penalty)
+        // inverts the penalty direction when baseScore is negative.
+        const totalScore = baseScore - Math.abs(baseScore) * totalPenaltyPercent;
 
         return {
             totalScore,

@@ -231,6 +231,13 @@ export class SkillHintEvaluator {
             } else if (operator === "!=") {
                 return this.runningTypes[runningStyleIndex] ? 0 : 1;
             }
+            // BUGFIX (defensive): an unhandled operator on a running_style condition
+            // used to fall through to the unrelated Wit-based proc-chance heuristic
+            // at the bottom of this function. All 234 cards' real conditions only
+            // ever use "==", so this branch isn't currently reachable, but treat an
+            // unrecognized operator as "condition not met" rather than silently
+            // mis-scoring it as a generic Wit-based hint.
+            return 0;
         }
         
         // Values: 1=Sprint, 2=Mile, 3=Medium, 4=Long
@@ -246,6 +253,8 @@ export class SkillHintEvaluator {
             } else if (operator === "!=") {
                 return this.raceTypes[distanceTypeIndex] ? 0 : 1;
             }
+            // BUGFIX (defensive): see the same fix on running_style above.
+            return 0;
         }
 
         if (field === "is_badstart") {

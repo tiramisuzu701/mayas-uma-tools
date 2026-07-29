@@ -184,6 +184,14 @@ export default function SupportCardBuilder() {
     const sameChara = deckCards.find((c) => c.charaId === entry.chara_id && c.id !== entry.id)
     if (sameChara) return { disabled: true, reason: 'SAME CHARACTER' }
 
+    // BUGFIX: a brand-new, non-conflicting card used to render as fully
+    // clickable even with a full 6-card deck (this check only lived in
+    // handleCardClick, which silently no-ops) - swaps (existing set) are
+    // still allowed since they don't change the deck's size.
+    if (!existing && deckCards.length >= MAX_DECK_SIZE) {
+      return { disabled: true, reason: 'DECK FULL' }
+    }
+
     return { disabled: false }
   }
 

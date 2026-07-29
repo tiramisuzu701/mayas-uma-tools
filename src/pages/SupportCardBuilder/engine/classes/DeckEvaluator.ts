@@ -210,12 +210,19 @@ export class DeckEvaluator {
         statBonuses[2] += facilitySupportCard.cardBonus["Power Bonus"] !== -1 ? facilitySupportCard.cardBonus["Power Bonus"] || 0 : 0;
         statBonuses[3] += facilitySupportCard.cardBonus["Guts Bonus"] !== -1 ? facilitySupportCard.cardBonus["Guts Bonus"] || 0 : 0;
         statBonuses[4] += facilitySupportCard.cardBonus["Wit Bonus"] !== -1 ? facilitySupportCard.cardBonus["Wit Bonus"] || 0 : 0;
+        // BUGFIX: Skill Point Bonus was never accumulated into statBonuses despite
+        // being consumed later (see the `if (baseStats[5])` skill-points block below).
+        statBonuses[5] += facilitySupportCard.cardBonus["Skill Point Bonus"] !== -1 ? facilitySupportCard.cardBonus["Skill Point Bonus"] || 0 : 0;
 
-        trainingEffectiveness += (facilitySupportCard.cardBonus["Training Effectiveness"] !== -1 
-            ? facilitySupportCard.cardBonus["Training Effectiveness"] || 0 
+        trainingEffectiveness += (facilitySupportCard.cardBonus["Training Effectiveness"] !== -1
+            ? facilitySupportCard.cardBonus["Training Effectiveness"] || 0
             : 0) / 100;
 
-        if (isBonded) {
+        // BUGFIX: was applying the host facility card's Friendship/Mood bonuses
+        // whenever it was bonded, regardless of whether this facility matches its
+        // own specialty type (an off-specialty appearance) - the combo-cards loop
+        // below already correctly gates this on card.cardType.type === trainingType.
+        if (isBonded && facilitySupportCard.cardType.type === trainingType) {
             friendshipBonus += (facilitySupportCard.cardBonus["Friendship Bonus"] !== -1
                 ? (facilitySupportCard.cardBonus["Friendship Bonus"] || 0) + cardBuffFriendship
                 : 0) / 100;
@@ -232,8 +239,10 @@ export class DeckEvaluator {
             statBonuses[2] += card.cardBonus["Power Bonus"] !== -1 ? card.cardBonus["Power Bonus"] || 0 : 0;
             statBonuses[3] += card.cardBonus["Guts Bonus"] !== -1 ? card.cardBonus["Guts Bonus"] || 0 : 0;
             statBonuses[4] += card.cardBonus["Wit Bonus"] !== -1 ? card.cardBonus["Wit Bonus"] || 0 : 0;
+            // BUGFIX: see the facility card's Skill Point Bonus fix above.
+            statBonuses[5] += card.cardBonus["Skill Point Bonus"] !== -1 ? card.cardBonus["Skill Point Bonus"] || 0 : 0;
 
-            trainingEffectiveness += (card.cardBonus["Training Effectiveness"] !== -1 
+            trainingEffectiveness += (card.cardBonus["Training Effectiveness"] !== -1
                 ? card.cardBonus["Training Effectiveness"] || 0 
                 : 0) / 100;
 
@@ -499,10 +508,15 @@ export class DeckEvaluator {
             const coreStats = stats.slice(0, -1); // Exclude energy cost
             const facilityMultiplierValue = facilityMultipliers[name] || 0;
 
-            // Get cards that match this facility type
-            const facilityCards = cardAppearances.filter(
-                (ca) => ca.cardType === name
-            );
+            // BUGFIX: previously filtered to only same-type cards, which made
+            // off-specialty appearances (a card showing up at a facility that isn't
+            // its own specialty type) structurally impossible - contradicting the
+            // specialty/off-specialty/no-appearance probability model documented
+            // above (see rainbowSpecialty/offSpecialty and the totalWeight comment).
+            // Now includes all deck cards; calculateCombinationProbability and the
+            // probabilityNoneAppear computation below already correctly distinguish
+            // specialty vs. off-specialty appearance rates per card.
+            const facilityCards = cardAppearances;
 
             if (facilityCards.length === 0) {
                 // No cards at this facility - just base training
@@ -536,16 +550,32 @@ export class DeckEvaluator {
                 // Use combinatorics approach: generate all possible combinations of cards appearing
                 // Generate all non-empty combinations (at least 1 card must appear)
                 const allCombinations = this.getCombinations(facilityCards, 1);
-                
-                
+
+                // PERF: a combination's appearance probability depends only on the
+                // cards' fixed rainbowSpecialty/offSpecialty rates and this facility's
+                // name - not on the turn - so it's the same every turn. Precomputing
+                // it once here (instead of inside the per-turn loop below) avoids
+                // recomputing it up to ~turnsToTrainAtThisFacility times per
+                // combination. This matters more now that facilityCards includes the
+                // whole deck (see the off-specialty-appearance bugfix above), since
+                // the combination count can be up to 2^6 instead of 2^(same-type
+                // count).
+                const combinationProbabilities = allCombinations.map((combination) =>
+                    this.calculateCombinationProbability(combination, facilityCards, name)
+                );
+
                 // Track gains for debug
                 const totalTurnGains = [0, 0, 0, 0, 0, 0];
                 let totalProbability = 0;
 
-                // Pre-compute probability that NO specialty cards appear at this facility
+                // Pre-compute probability that NO cards appear at this facility.
+                // BUGFIX: was unconditionally using card.rainbowSpecialty even for
+                // cards whose type doesn't match this facility - now uses offSpecialty
+                // for those, matching calculateCombinationProbability's own logic.
                 let probabilityNoneAppear = 1.0;
                 for (const card of facilityCards) {
-                    probabilityNoneAppear *= (1 - card.rainbowSpecialty);
+                    const appearRate = card.cardType === name ? card.rainbowSpecialty : card.offSpecialty;
+                    probabilityNoneAppear *= (1 - appearRate);
                 }
 
                 let lastPrintedLevel = -1;
@@ -565,8 +595,9 @@ export class DeckEvaluator {
                     const allEntries: Entry[] = [];
                     let turnProbSum = 0;
 
-                    for (const combination of allCombinations) {
-                        const probability = this.calculateCombinationProbability(combination, facilityCards, name);
+                    for (let ci = 0; ci < allCombinations.length; ci++) {
+                        const combination = allCombinations[ci];
+                        const probability = combinationProbabilities[ci];
                         const primaryCard = combination[0].card;
                         const otherCards = combination.slice(1);
                         const isBonded = turn >= primaryCard.turnsToMaxBond;
@@ -789,6 +820,7 @@ export class DeckEvaluator {
         optionalRaces: {G1: number, G2or3: number, PreOPorOP: number} = {G1: 0, G2or3: 0, PreOPorOP: 0},
         deckStats?: {Speed: number, Stamina: number, Power: number, Guts: number, Wit: number},
         statWeights?: {Speed: number, Stamina: number, Power: number, Guts: number, Wit: number},
+        scenarioName: string = "URA",
     ): HintResult {
         const totalHintsGained: HintResult = {
             hint_frequency: 0,
@@ -800,10 +832,18 @@ export class DeckEvaluator {
         };
         const allGoldSkills: Array<{ name: string; value: number; multiplier: number; icon_id: number; active: boolean }> = [];
         const seenSkillNames = new Set<string>();
+        let allowedCardCount = 0;
 
         for (const card of this.deck) {
-            const hintForCard = card.evaluateCardHints(raceTypes, runningTypes, optionalRaces, deckStats, statWeights);
-            
+            // BUGFIX: cards that aren't allowed in this scenario (e.g. scenario-
+            // exclusive cards from a different scenario) shouldn't contribute hints -
+            // evaluateStats already skips these cards via the same check.
+            if (!isSupportCardAllowedInScenario(card.id.toString(), scenarioName)) {
+                continue;
+            }
+            allowedCardCount++;
+            const hintForCard = card.evaluateCardHints(raceTypes, runningTypes, optionalRaces, deckStats, statWeights, scenarioName);
+
             // Accumulate numeric properties
             totalHintsGained.hint_frequency += hintForCard.hint_frequency;
             totalHintsGained.hints_from_events += hintForCard.hints_from_events;
@@ -820,9 +860,13 @@ export class DeckEvaluator {
             }
         }
 
-        if (this.deck.length > 0) {
-            totalHintsGained.hint_frequency /= this.deck.length;
-            totalHintsGained.useful_hints_rate /= this.deck.length;
+        // BUGFIX: was averaging over this.deck.length, which double-counts the
+        // scenario-exclusivity skip above (cards skipped there no longer contribute
+        // to the sum, but were still dividing it down) - now averages over the
+        // number of cards actually included.
+        if (allowedCardCount > 0) {
+            totalHintsGained.hint_frequency /= allowedCardCount;
+            totalHintsGained.useful_hints_rate /= allowedCardCount;
         }
 
         totalHintsGained.gold_skills = allGoldSkills;

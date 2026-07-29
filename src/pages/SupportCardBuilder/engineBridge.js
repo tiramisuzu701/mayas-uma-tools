@@ -33,12 +33,20 @@ export function getDefaultOptionalRaces(scenarioKey) {
 }
 
 // Turns equipped blue-spark slots into the per-stat cap-bonus object the
-// engine expects ({ Speed, Stamina, Power, Guts, Intelligence }). Only the
-// cap-raise half of a spark's bonus is ever wired into scoring here -
-// same as the original (its flat-stat half is display-only in its own
-// spark summary, never passed to the scoring engine either).
+// engine expects ({ Speed, Stamina, Power, Guts, Intelligence }).
 export function getSparkCapBonus(sparks) {
   return TrainingData.getSparkBonuses(sparks || []).capBonus
+}
+
+// BUGFIX: the flat-stat half of a blue spark's bonus (SPARK_BONUSES[star].stats)
+// was computed by TrainingData.getSparkBonuses but this was the only call site in
+// the whole app, and it discarded .flatStats entirely - equipped sparks' flat stat
+// bonuses had no effect on scoring at all, only their cap-raise half did. Now
+// exposed alongside getSparkCapBonus and threaded into generateTierlist below,
+// which passes both into Tierlist.bestCardForDeck's sparkCapBonus/sparkFlatStats
+// parameters (see Tierlist.ts's soft-cap handling for how the two combine).
+export function getSparkFlatStats(sparks) {
+  return TrainingData.getSparkBonuses(sparks || []).flatStats
 }
 
 // Builds a live DeckEvaluator from the lightweight deck-card records the UI
@@ -97,6 +105,7 @@ export function generateTierlist({
       optionalRaces,
       mood,
       getSparkCapBonus(sparks),
+      getSparkFlatStats(sparks),
     )
   } catch (err) {
     return { success: false, error: err?.toString?.() || String(err) }

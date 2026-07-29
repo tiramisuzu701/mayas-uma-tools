@@ -126,7 +126,17 @@ export default function TierBoard({ tierlist, getCardDisabledInfo, onCardClick, 
         if (i !== slotIndex && next[i] === value) next[i] = ''
       }
       next[slotIndex] = value
-      return next
+      // BUGFIX: clearing an earlier slot's duplicate above could leave a gap
+      // before slotIndex (e.g. slot 0 had "Speed Bonus", user then picks
+      // "Speed Bonus" for slot 2 - slot 0 clears to ''). visibleSlotCount is
+      // derived from the first empty slot, so that earlier gap used to hide
+      // every slot from that point on - including the one the user just set.
+      // Compact so filled values are always contiguous from index 0 (a
+      // selected substat may shift toward an earlier slot when this happens,
+      // but it stays visible instead of disappearing).
+      const compacted = next.filter((v) => v !== '')
+      while (compacted.length < next.length) compacted.push('')
+      return compacted
     })
   }
 
