@@ -105233,6 +105233,578 @@
     }
   },
   {
+    "id": 30113,
+    "chara_id_card": 1023,
+    "rarity": 3,
+    "effect_table_id": 30113,
+    "unique_effect_id": 30113,
+    "support_card_type": 1,
+    "skill_set_id": 9081023,
+    "card_chara_name": "Biwa Hayahide",
+    "prefered_type_id": 1,
+    "prefered_type": "Stamina",
+    "effects": [
+      {
+        "0lb": 15,
+        "1lb": 16,
+        "2lb": 18,
+        "3lb": 20,
+        "mlb": 20,
+        "type": 1,
+        "type_name": "Friendship Bonus"
+      },
+      {
+        "0lb": 2,
+        "1lb": 2,
+        "2lb": 2,
+        "3lb": 2,
+        "mlb": 3,
+        "type": 17,
+        "type_name": "Hint Levels"
+      },
+      {
+        "0lb": 40,
+        "1lb": 42,
+        "2lb": 45,
+        "3lb": 47,
+        "mlb": 50,
+        "type": 18,
+        "type_name": "Hint Frequency"
+      },
+      {
+        "0lb": 35,
+        "1lb": 40,
+        "2lb": 45,
+        "3lb": 50,
+        "mlb": 50,
+        "type": 19,
+        "type_name": "Specialty Priority"
+      },
+      {
+        "0lb": 15,
+        "1lb": 16,
+        "2lb": 18,
+        "3lb": 20,
+        "mlb": 20,
+        "type": 10,
+        "type_name": "Initial Stamina"
+      },
+      {
+        "0lb": 15,
+        "1lb": 16,
+        "2lb": 18,
+        "3lb": 20,
+        "mlb": 20,
+        "type": 14,
+        "type_name": "Initial Friendship Gauge"
+      },
+      {
+        "0lb": 1,
+        "1lb": 2,
+        "2lb": 3,
+        "3lb": 5,
+        "mlb": 5,
+        "type": 15,
+        "type_name": "Race Bonus"
+      },
+      {
+        "0lb": 5,
+        "1lb": 6,
+        "2lb": 8,
+        "3lb": 10,
+        "mlb": 10,
+        "type": 16,
+        "type_name": "Fan Bonus"
+      },
+      {
+        "0lb": -1,
+        "1lb": 1,
+        "2lb": 1,
+        "3lb": 1,
+        "mlb": 1,
+        "type": 30,
+        "type_name": "Skill Point Bonus"
+      },
+      {
+        "0lb": -1,
+        "1lb": -1,
+        "2lb": -1,
+        "3lb": 1,
+        "mlb": 2,
+        "type": 4,
+        "type_name": "Stamina Bonus"
+      },
+      {
+        "0lb": -1,
+        "1lb": -1,
+        "2lb": 10,
+        "3lb": 10,
+        "mlb": 10,
+        "type": 8,
+        "type_name": "Training Effectiveness"
+      }
+    ],
+    "unique_effects": [
+      {
+        "level_unlocked": "2lb",
+        "effects": [
+          {
+            "type": 8,
+            "type_name": "Training Effectiveness",
+            "value": 10
+          }
+        ]
+      }
+    ],
+    "hints_table": [
+      {
+        "type": "skill_hint",
+        "skill_id": 200262,
+        "skill_data": {
+          "id": 200262,
+          "rarity": 1,
+          "group_id": 20026,
+          "icon_id": 10011,
+          "grade_value": 129,
+          "condition_1": "post_number>=6",
+          "skill_time_active": -1,
+          "skill_cooldown_time": 0,
+          "ability_type": 1,
+          "ability_value": 400000,
+          "skill_name": "Outer Post Proficiency ○",
+          "skill_desc": "Moderately increase performance in brackets 6–8."
+        },
+        "hint_level": 1
+      },
+      {
+        "type": "skill_hint",
+        "skill_id": 200052,
+        "skill_data": {
+          "id": 200052,
+          "rarity": 1,
+          "group_id": 20005,
+          "icon_id": 10021,
+          "grade_value": 129,
+          "condition_1": "track_id==10009",
+          "skill_time_active": -1,
+          "skill_cooldown_time": 0,
+          "ability_type": 2,
+          "ability_value": 400000,
+          "skill_name": "Hanshin Racecourse ○",
+          "skill_desc": "Moderately increase performance at Hanshin Racecourse."
+        },
+        "hint_level": 1
+      },
+      {
+        "type": "skill_hint",
+        "skill_id": 200162,
+        "skill_data": {
+          "id": 200162,
+          "rarity": 1,
+          "group_id": 20016,
+          "icon_id": 10031,
+          "grade_value": 129,
+          "condition_1": "ground_condition==2@ground_condition==3@ground_condition==4",
+          "skill_time_active": -1,
+          "skill_cooldown_time": 0,
+          "ability_type": 3,
+          "ability_value": 400000,
+          "skill_name": "Wet Conditions ○",
+          "skill_desc": "Moderately increase performance on good, soft, and heavy ground."
+        },
+        "hint_level": 1
+      },
+      {
+        "type": "skill_hint",
+        "skill_id": 200222,
+        "skill_data": {
+          "id": 200222,
+          "rarity": 1,
+          "group_id": 20022,
+          "icon_id": 10041,
+          "grade_value": 129,
+          "condition_1": "weather==2",
+          "skill_time_active": -1,
+          "skill_cooldown_time": 0,
+          "ability_type": 4,
+          "ability_value": 400000,
+          "skill_name": "Cloudy Days ○",
+          "skill_desc": "Moderately increase performance in cloudy weather."
+        },
+        "hint_level": 1
+      },
+      {
+        "type": "skill_hint",
+        "skill_id": 201532,
+        "skill_data": {
+          "id": 201532,
+          "rarity": 1,
+          "group_id": 20153,
+          "icon_id": 10051,
+          "grade_value": 174,
+          "condition_1": "running_style==2",
+          "skill_time_active": -1,
+          "skill_cooldown_time": 0,
+          "ability_type": 5,
+          "ability_value": 400000,
+          "skill_name": "Pace Chaser Savvy ○",
+          "skill_desc": "Moderately increase ability to get into a good position. (Pace Chaser)"
+        },
+        "hint_level": 1
+      },
+      {
+        "type": "skill_hint",
+        "skill_id": 200562,
+        "skill_data": {
+          "id": 200562,
+          "rarity": 1,
+          "group_id": 20056,
+          "icon_id": 20021,
+          "grade_value": 217,
+          "condition_1": "running_style==2&phase_laterhalf_random==0&order_rate<=50",
+          "skill_time_active": 0,
+          "skill_cooldown_time": 5000000,
+          "ability_type": 9,
+          "ability_value": 150,
+          "skill_name": "Stamina to Spare",
+          "skill_desc": "Slightly decrease fatigue upon approaching mid-race. (Pace Chaser)"
+        },
+        "hint_level": 1
+      },
+      {
+        "type": "skill_hint",
+        "skill_id": 201202,
+        "skill_data": {
+          "id": 201202,
+          "rarity": 1,
+          "group_id": 20120,
+          "icon_id": 20021,
+          "grade_value": 217,
+          "condition_1": "distance_type==4&is_overtake==1&accumulatetime>=5",
+          "skill_time_active": 0,
+          "skill_cooldown_time": 5000000,
+          "ability_type": 9,
+          "ability_value": 150,
+          "skill_name": "Passing Pro",
+          "skill_desc": "Slightly decrease fatigue when determined to pass another runner. (Long)"
+        },
+        "hint_level": 1
+      },
+      {
+        "type": "skill_hint",
+        "skill_id": 201312,
+        "skill_data": {
+          "id": 201312,
+          "rarity": 1,
+          "group_id": 20131,
+          "icon_id": 20011,
+          "grade_value": 217,
+          "condition_1": "running_style==2&straight_random==1",
+          "skill_time_active": 30000,
+          "skill_cooldown_time": 5000000,
+          "ability_type": 27,
+          "ability_value": 1500,
+          "skill_name": "Pace Chaser Straightaways ○",
+          "skill_desc": "Slightly increase velocity on a straight. (Pace Chaser)"
+        },
+        "hint_level": 1
+      },
+      {
+        "type": "skill_hint",
+        "skill_id": 201611,
+        "skill_data": {
+          "id": 201611,
+          "rarity": 1,
+          "group_id": 20161,
+          "icon_id": 20011,
+          "grade_value": 217,
+          "condition_1": "activate_count_middle>=3",
+          "skill_time_active": 30000,
+          "skill_cooldown_time": 5000000,
+          "ability_type": 27,
+          "ability_value": 1500,
+          "skill_name": "Tail Held High",
+          "skill_desc": "Slightly increase velocity after activating many skills mid-race."
+        },
+        "hint_level": 1
+      },
+      {
+        "type": "skill_hint",
+        "skill_id": 201902,
+        "skill_data": {
+          "id": 201902,
+          "rarity": 1,
+          "group_id": 20190,
+          "icon_id": 20041,
+          "grade_value": 217,
+          "condition_1": "running_style==2&phase_random==2&order_rate<=50",
+          "skill_time_active": 18000,
+          "skill_cooldown_time": 5000000,
+          "ability_type": 31,
+          "ability_value": 2000,
+          "skill_name": "Head-On",
+          "skill_desc": "Slightly increase acceleration when positioned toward the front late-race. (Pace Chaser)"
+        },
+        "hint_level": 1
+      },
+      {
+        "type": "stat_hint",
+        "stats": [
+          {
+            "stat_id": "Stamina",
+            "value": 6
+          },
+          {
+            "stat_id": "Guts",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "skill_hint",
+        "skill_id": 209991,
+        "skill_data": {
+          "id": 209991,
+          "rarity": 1,
+          "group_id": 20999,
+          "icon_id": 20021,
+          "grade_value": 217,
+          "condition_1": "is_badstart==0&running_style==2&distance_type==4&phase_firsthalf_random==1",
+          "skill_time_active": 0,
+          "skill_cooldown_time": 5000000,
+          "ability_type": 9,
+          "ability_value": 150,
+          "skill_name": "All Set",
+          "skill_desc": "If the skill user began the race without a late start, moderately recover endurance in the early part of mid-race. (Pace, Long)"
+        },
+        "hint_level": 1
+      }
+    ],
+    "hints_event_table": [
+      {
+        "type": "skill_hint",
+        "skill_id": 200582,
+        "skill_data": {
+          "id": 200582,
+          "rarity": 1,
+          "group_id": 20058,
+          "icon_id": 20011,
+          "grade_value": 217,
+          "condition_1": "running_style==2&is_finalcorner_random==1&order_rate<=50",
+          "skill_time_active": 18000,
+          "skill_cooldown_time": 5000000,
+          "ability_type": 27,
+          "ability_value": 1500,
+          "skill_name": "Prepared to Pass",
+          "skill_desc": "Slightly increase ability to break out of the pack on the final corner. (Pace Chaser)"
+        },
+        "hint_level": 1
+      },
+      {
+        "type": "skill_hint",
+        "skill_id": 200752,
+        "skill_data": {
+          "id": 200752,
+          "rarity": 1,
+          "group_id": 20075,
+          "icon_id": 20011,
+          "grade_value": 217,
+          "condition_1": "distance_type==4&is_finalcorner==1&corner!=0&lane_type==0",
+          "skill_time_active": 30000,
+          "skill_cooldown_time": 5000000,
+          "ability_type": 27,
+          "ability_value": 1500,
+          "skill_name": "Inside Scoop",
+          "skill_desc": "Slightly increase velocity when near the inner rail on the final corner. (Long)"
+        },
+        "hint_level": 1
+      },
+      {
+        "type": "skill_hint",
+        "skill_id": 201201,
+        "skill_data": {
+          "id": 201201,
+          "rarity": 2,
+          "group_id": 20120,
+          "icon_id": 20022,
+          "grade_value": 508,
+          "condition_1": "distance_type==4&is_overtake==1&accumulatetime>=5",
+          "skill_time_active": 0,
+          "skill_cooldown_time": 5000000,
+          "ability_type": 9,
+          "ability_value": 550,
+          "skill_name": "VIP Pass",
+          "skill_desc": "Decrease fatigue when determined to pass another runner. (Long)"
+        },
+        "hint_level": 1
+      }
+    ],
+    "all_events": {
+      "dates": [],
+      "special_events": [],
+      "chain_events": [
+        {
+          "name": "The Problems in Running a Family Business",
+          "choices": [
+            {
+              "option": "",
+              "rewards": [
+                {
+                  "type": "Mood",
+                  "value": "+1"
+                },
+                {
+                  "type": "Potential",
+                  "value": "+10"
+                },
+                {
+                  "type": "Bond",
+                  "value": "+5"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Cognitive Restructuring in a Virtual Space",
+          "choices": [
+            {
+              "option": "",
+              "rewards": [
+                {
+                  "type": "Stamina",
+                  "value": "+20"
+                },
+                {
+                  "type": "Bond",
+                  "value": "+5"
+                }
+              ]
+            },
+            {
+              "option": "",
+              "rewards": [
+                {
+                  "type": "Potential",
+                  "value": "+10"
+                },
+                {
+                  "type": "Skill Hint",
+                  "value": "+1",
+                  "detail": 200582
+                },
+                {
+                  "type": "Bond",
+                  "value": "+5"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "The Planner's Effect on the Party",
+          "choices": [
+            {
+              "option": "",
+              "rewards": [
+                {
+                  "type": "Stamina",
+                  "value": "+10"
+                },
+                {
+                  "type": "Skill Hint",
+                  "value": "+1",
+                  "detail": 201201
+                },
+                {
+                  "type": "Bond",
+                  "value": "+5"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "random_events": [
+        {
+          "name": "Last-Minute Modal Theory",
+          "choices": [
+            {
+              "option": "",
+              "rewards": [
+                {
+                  "type": "Power",
+                  "value": "+15"
+                },
+                {
+                  "type": "Bond",
+                  "value": "+5"
+                }
+              ]
+            },
+            {
+              "option": "",
+              "rewards": [
+                {
+                  "type": "Speed",
+                  "value": "+10"
+                },
+                {
+                  "type": "Potential",
+                  "value": "+15"
+                },
+                {
+                  "type": "Bond",
+                  "value": "+5"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Step-Out-of-Your-Comfort-Zone Theory",
+          "choices": [
+            {
+              "option": "",
+              "rewards": [
+                {
+                  "type": "Energy",
+                  "value": "-10"
+                },
+                {
+                  "type": "Skill Hint",
+                  "value": "+1",
+                  "detail": 200752
+                },
+                {
+                  "type": "Bond",
+                  "value": "+5"
+                }
+              ]
+            },
+            {
+              "option": "",
+              "rewards": [
+                {
+                  "type": "Energy",
+                  "value": "+10"
+                },
+                {
+                  "type": "Stamina",
+                  "value": "+10"
+                },
+                {
+                  "type": "Bond",
+                  "value": "+5"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
     "id": 30121,
     "chara_id_card": 1026,
     "rarity": 3,
