@@ -592,6 +592,11 @@ select option {
   background: var(--surface-alt);
   cursor: pointer;
   transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+  /* Same reasoning as .scb-tier-tile - up to ~95 of these can be in the grid
+     at once, and this keeps one option's hover animation from forcing the
+     browser to reconsider its siblings' layout/paint. Doesn't affect this
+     grid item's own sizing (that's driven by the grid track, not content). */
+  contain: content;
 }
 
 .picker-option:hover,
@@ -774,22 +779,45 @@ select option {
   padding: 6px;
 }
 
-.scb-deck-slot-remove {
-  position: absolute;
-  top: -6px;
-  right: -6px;
-  width: 22px;
-  height: 22px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--surface-raised);
-  color: var(--text);
-  font-size: 0.7rem;
-  line-height: 1;
+.scb-deck-slot-card {
+  position: relative;
+  display: block;
+  width: 96px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: none;
   cursor: pointer;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  transition: transform 0.12s ease;
+}
+
+.scb-deck-slot-card:hover,
+.scb-deck-slot-card:focus-visible {
+  transform: translateY(-2px);
+}
+
+.scb-deck-slot-remove-overlay {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #fff;
+  background: color-mix(in srgb, var(--red) 55%, rgba(10, 8, 18, 0.75));
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  pointer-events: none;
+  border-radius: var(--radius-sm);
+}
+
+.scb-deck-slot-card:hover .scb-deck-slot-remove-overlay,
+.scb-deck-slot-card:focus-visible .scb-deck-slot-remove-overlay {
+  opacity: 1;
 }
 
 .scb-deck-slot-label {
@@ -800,6 +828,33 @@ select option {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Small non-blocking badge shown over the still-visible (slightly stale)
+   tier board while a debounced recompute is in flight, so the board never
+   has to unmount/remount (and lose its own filter state) just to signal
+   that new numbers are on the way. */
+.scb-stale-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  margin: 0 0 10px;
+}
+
+.scb-stale-indicator::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--gold);
+  animation: scb-stale-pulse 1s ease-in-out infinite;
+}
+
+@keyframes scb-stale-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
 }
 
 .scb-tier-type-section {
@@ -1364,6 +1419,13 @@ select option {
   overflow: hidden;
   cursor: pointer;
   transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+  /* Up to several hundred of these can be on screen at once. `contain:
+     content` (layout + paint + style, not size - this tile's width is
+     already fixed above) tells the browser that hovering/animating one
+     tile can never affect the layout or paint of any other tile or its
+     siblings, so the browser doesn't need to re-check the rest of the
+     grid on every hover transition. */
+  contain: content;
 }
 
 .scb-tier-tile:hover:not(.scb-tier-tile-disabled) {

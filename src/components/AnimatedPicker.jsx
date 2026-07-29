@@ -1,8 +1,37 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Avatar from './Avatar.jsx'
 
 const ANIM_MS = 170
+
+// One option button in the picker grid, extracted so it can be memoized -
+// this list can hold all 95 built-in characters (plus any custom roster
+// entries), and without memoization every option re-renders on every
+// keystroke in the search box (since AnimatedPicker itself re-renders when
+// `query` changes), even for options whose match/selected state didn't
+// change. `opt` keeps a stable identity across re-renders as long as the
+// underlying `options` array passed into AnimatedPicker doesn't change
+// (filtering-by-search reuses the same objects, it just changes which ones
+// are included), and `onEnter`/`onLeave`/`onSelectOption` are stabilized
+// with useCallback below, so this only re-renders when an option's own
+// `isSelected`/`disabled` state actually changes.
+const PickerOption = memo(function PickerOption({ opt, isSelected, onEnter, onLeave, onSelectOption }) {
+  return (
+    <button
+      type="button"
+      disabled={opt.disabled}
+      className={`picker-option ${isSelected ? 'picker-option-selected' : ''}`}
+      onMouseEnter={(e) => onEnter(opt, e)}
+      onMouseLeave={() => onLeave(opt)}
+      onFocus={(e) => onEnter(opt, e)}
+      onBlur={() => onLeave(opt)}
+      onClick={() => onSelectOption(opt.id)}
+    >
+      <Avatar characterId={opt.characterId} name={opt.name} size={64} />
+      <span className="picker-option-name">{opt.name}</span>
+    </button>
+  )
+})
 
 // A searchable, animated grid popup used in place of a plain <select> -
 // shows each option as a portrait + name card, and (optionally) a hover
@@ -36,26 +65,40 @@ export default function AnimatedPicker({ open, onClose, title, options, value, o
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, closing])
 
-  function requestClose() {
+  const requestClose = useCallback(() => {
     setClosing(true)
     clearTimeout(closeTimer.current)
     closeTimer.current = setTimeout(() => {
       setClosing(false)
       onClose()
     }, ANIM_MS)
-  }
-
-  if (!open && !closing) return null
+  }, [onClose])
 
   const q = query.trim().toLowerCase()
-  const filtered = q ? options.filter((o) => o.name.toLowerCase().includes(q)) : options
+  // Memoized: this is a full pass over the option list (up to ~95 built-in
+  // characters, or more for a large roster) on every keystroke - useMemo
+  // keeps it from also re-running on renders unrelated to `query`/`options`
+  // (e.g. a hover-driven `hovered` state update).
+  const filtered = useMemo(
+    () => (q ? options.filter((o) => o.name.toLowerCase().includes(q)) : options),
+    [q, options],
+  )
 
-  function handleEnter(opt, e) {
+  const handleEnter = useCallback((opt, e) => {
     setHovered({ id: opt.id, rect: e.currentTarget.getBoundingClientRect() })
-  }
-  function handleLeave(opt) {
+  }, [])
+  const handleLeave = useCallback((opt) => {
     setHovered((h) => (h && h.id === opt.id ? null : h))
-  }
+  }, [])
+  const handleSelectOption = useCallback(
+    (id) => {
+      onSelect(id)
+      requestClose()
+    },
+    [onSelect, requestClose],
+  )
+
+  if (!open && !closing) return null
 
   const hoveredOpt = hovered ? filtered.find((o) => o.id === hovered.id) : null
 
@@ -84,23 +127,14 @@ export default function AnimatedPicker({ open, onClose, title, options, value, o
           </div>
           <div className="picker-grid">
             {filtered.map((opt) => (
-              <button
-                type="button"
+              <PickerOption
                 key={opt.id}
-                disabled={opt.disabled}
-                className={`picker-option ${opt.id === value ? 'picker-option-selected' : ''}`}
-                onMouseEnter={(e) => handleEnter(opt, e)}
-                onMouseLeave={() => handleLeave(opt)}
-                onFocus={(e) => handleEnter(opt, e)}
-                onBlur={() => handleLeave(opt)}
-                onClick={() => {
-                  onSelect(opt.id)
-                  requestClose()
-                }}
-              >
-                <Avatar characterId={opt.characterId} name={opt.name} size={64} />
-                <span className="picker-option-name">{opt.name}</span>
-              </button>
+                opt={opt}
+                isSelected={opt.id === value}
+                onEnter={handleEnter}
+                onLeave={handleLeave}
+                onSelectOption={handleSelectOption}
+              />
             ))}
             {filtered.length === 0 && <p className="picker-empty">No matches.</p>}
           </div>

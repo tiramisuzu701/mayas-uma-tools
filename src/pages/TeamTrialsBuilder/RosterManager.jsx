@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { memo, useCallback, useRef, useState } from 'react'
 import Avatar from '../../components/Avatar.jsx'
 import GradeBadge from '../../components/GradeBadge.jsx'
 import Modal from '../../components/Modal.jsx'
@@ -19,6 +19,19 @@ export default function RosterManager({ roster, onAdd, onUpdate, onDelete }) {
   function closeModal() {
     setModalMode(null)
   }
+
+  // Stabilized with useCallback and passed to the memoized RosterRow below -
+  // editing or deleting one uma would otherwise force React to re-render
+  // every row in the table (each with its own Avatar/GradeBadge), since the
+  // inline `() => setModalMode({ edit: uma.id })` closures previously used
+  // directly in the row JSX were recreated fresh every render.
+  const handleEdit = useCallback((id) => setModalMode({ edit: id }), [])
+  const handleDeleteConfirm = useCallback(
+    (id, name) => {
+      if (confirm(`Remove ${name} from your roster?`)) onDelete(id)
+    },
+    [onDelete],
+  )
 
   function handleSave(uma) {
     if (modalMode === 'add') {
@@ -100,45 +113,7 @@ export default function RosterManager({ roster, onAdd, onUpdate, onDelete }) {
             </thead>
             <tbody>
               {roster.map((uma) => (
-                <tr key={uma.id} style={{ borderTop: '1px solid var(--border-soft)' }}>
-                  <td style={{ padding: '10px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <Avatar characterId={uma.characterId} name={characterName(uma)} size={36} />
-                      <div>
-                        <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{displayName(uma)}</div>
-                        {uma.uniqueSkill && (
-                          <div style={{ fontSize: '0.72rem', color: 'var(--text-faint)' }}>{uma.uniqueSkill}</div>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                  {STATS.map((s) => (
-                    <td key={s.id} style={{ padding: '10px', fontVariantNumeric: 'tabular-nums' }}>
-                      {uma.stats[s.id] || 0}
-                    </td>
-                  ))}
-                  <td style={{ padding: '10px' }}>
-                    <span className="pill">
-                      {RUNNING_STYLES.find((s) => s.id === uma.runningStyle)?.label}
-                      {' '}
-                      <GradeBadge grade={uma.aptitudes.style[uma.runningStyle]} />
-                    </span>
-                  </td>
-                  <td style={{ padding: '10px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    <button className="btn btn-ghost btn-sm" onClick={() => setModalMode({ edit: uma.id })}>
-                      Edit
-                    </button>
-                    <button
-                      className="btn btn-danger btn-sm"
-                      style={{ marginLeft: 6 }}
-                      onClick={() => {
-                        if (confirm(`Remove ${displayName(uma)} from your roster?`)) onDelete(uma.id)
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
+                <RosterRow key={uma.id} uma={uma} onEdit={handleEdit} onDeleteConfirm={handleDeleteConfirm} />
               ))}
             </tbody>
           </table>
@@ -153,3 +128,49 @@ export default function RosterManager({ roster, onAdd, onUpdate, onDelete }) {
     </div>
   )
 }
+
+// Extracted + memoized so editing/adding/deleting one uma doesn't force
+// React to re-render every other row's Avatar/GradeBadge - each row's own
+// props (`uma`, plus the stabilized onEdit/onDeleteConfirm callbacks above)
+// only actually change when that row's own data changes.
+const RosterRow = memo(function RosterRow({ uma, onEdit, onDeleteConfirm }) {
+  return (
+    <tr style={{ borderTop: '1px solid var(--border-soft)' }}>
+      <td style={{ padding: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Avatar characterId={uma.characterId} name={characterName(uma)} size={36} />
+          <div>
+            <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{displayName(uma)}</div>
+            {uma.uniqueSkill && (
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-faint)' }}>{uma.uniqueSkill}</div>
+            )}
+          </div>
+        </div>
+      </td>
+      {STATS.map((s) => (
+        <td key={s.id} style={{ padding: '10px', fontVariantNumeric: 'tabular-nums' }}>
+          {uma.stats[s.id] || 0}
+        </td>
+      ))}
+      <td style={{ padding: '10px' }}>
+        <span className="pill">
+          {RUNNING_STYLES.find((s) => s.id === uma.runningStyle)?.label}
+          {' '}
+          <GradeBadge grade={uma.aptitudes.style[uma.runningStyle]} />
+        </span>
+      </td>
+      <td style={{ padding: '10px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+        <button className="btn btn-ghost btn-sm" onClick={() => onEdit(uma.id)}>
+          Edit
+        </button>
+        <button
+          className="btn btn-danger btn-sm"
+          style={{ marginLeft: 6 }}
+          onClick={() => onDeleteConfirm(uma.id, displayName(uma))}
+        >
+          Delete
+        </button>
+      </td>
+    </tr>
+  )
+})

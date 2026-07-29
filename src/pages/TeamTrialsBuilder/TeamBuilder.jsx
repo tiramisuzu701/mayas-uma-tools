@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { memo, useCallback, useMemo, useState } from 'react'
 import Avatar from '../../components/Avatar.jsx'
 import GradeBadge from '../../components/GradeBadge.jsx'
 import PickerField from '../../components/PickerField.jsx'
@@ -35,12 +35,17 @@ export default function TeamBuilder({ roster }) {
     return set
   }, [assignment])
 
-  function setSlot(categoryId, roleId, umaId) {
+  // useCallback'd (stable identity across renders, since it only uses the
+  // functional-update form of setAssignment) so it can be passed directly
+  // to each RoleSlot below instead of a fresh `(umaId) => setSlot(...)`
+  // closure per slot per render - lets RoleSlot's own memoization actually
+  // hold.
+  const setSlot = useCallback((categoryId, roleId, umaId) => {
     setAssignment((prev) => ({
       ...prev,
       [categoryId]: { ...prev[categoryId], [roleId]: umaId || null },
     }))
-  }
+  }, [])
 
   function autoFillAll() {
     if (roster.length === 0) return
@@ -183,7 +188,7 @@ export default function TeamBuilder({ roster }) {
                     uma={rosterById[assignment[category.id][role.id]]}
                     roster={roster}
                     usedIds={usedIds}
-                    onChange={(umaId) => setSlot(category.id, role.id, umaId)}
+                    onChange={setSlot}
                   />
                 ))}
               </div>
@@ -195,13 +200,33 @@ export default function TeamBuilder({ roster }) {
   )
 }
 
-function RoleSlot({ category, role, umaId, uma, roster, usedIds, onChange }) {
+// Memoized so a change in one slot's assignment doesn't force every other
+// slot to re-derive its warnings/score/options unless something it
+// actually depends on (its own umaId/uma, the shared roster, or usedIds -
+// which does change on every assignment change, since another slot's pick
+// affects everyone else's available options) changed. `category`/`role`
+// are stable references (from the module-level RACE_CATEGORIES/TEAM_ROLES
+// constants), so this comparison is cheap and correct.
+const RoleSlot = memo(function RoleSlot({ category, role, umaId, uma, roster, usedIds, onChange }) {
   const warnings = uma ? fitWarnings(uma, category) : []
   const score = uma ? fitScore(uma, category) : 0
 
-  const options = roster
-    .filter((u) => u.id === umaId || !usedIds.has(u.id))
-    .map((u) => ({ id: u.id, name: displayName(u), characterId: u.characterId, umaRef: u }))
+  // Memoized: filtering/mapping the whole roster for every one of the 15
+  // slots on every render adds up (15x the work it needs to be) even
+  // though the roster itself is small - useMemo keeps this from re-running
+  // when this slot's own inputs haven't changed.
+  const options = useMemo(
+    () =>
+      roster
+        .filter((u) => u.id === umaId || !usedIds.has(u.id))
+        .map((u) => ({ id: u.id, name: displayName(u), characterId: u.characterId, umaRef: u })),
+    [roster, usedIds, umaId],
+  )
+
+  const handleSelect = useCallback(
+    (nextUmaId) => onChange(category.id, role.id, nextUmaId),
+    [onChange, category.id, role.id],
+  )
 
   return (
     <div
@@ -226,7 +251,7 @@ function RoleSlot({ category, role, umaId, uma, roster, usedIds, onChange }) {
         title={`Choose your ${role.label.toLowerCase()} for ${category.label}`}
         options={options}
         value={umaId}
-        onSelect={onChange}
+        onSelect={handleSelect}
         placeholder="— Empty —"
         size={36}
         renderPreview={(opt) => renderRosterPreview(opt.umaRef, category)}
@@ -241,7 +266,7 @@ function RoleSlot({ category, role, umaId, uma, roster, usedIds, onChange }) {
       )}
     </div>
   )
-}
+})
 
 function renderRosterPreview(uma, category) {
   return (

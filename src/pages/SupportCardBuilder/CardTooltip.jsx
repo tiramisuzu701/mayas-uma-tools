@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 const HINT_TYPE_COLORS = {
@@ -47,7 +47,14 @@ function formatStatChange(value, statName) {
 // Tachyon's Lab's CardTooltip.tsx - ~same trigger/positioning behavior, but
 // skill icons are hotlinked from GameTora instead of a locally-bundled
 // asset, matching this site's card-art hotlinking (see SupportCardArt.jsx).
-export default function CardTooltip({ card, disabled, children }) {
+//
+// Wrapped in React.memo: up to ~470-1175 instances of this can be mounted
+// at once (one per tile in TierBoard), and the vast majority are always
+// `visible === false`. Without memoization, every one of them re-runs its
+// full render body (the useful_hints_rate/gold-skill/stat-diff derivations
+// below) whenever TierBoard re-renders for any reason, even though only
+// the single hovered instance's own state ever actually changes.
+function CardTooltip({ card, disabled, children }) {
   const [visible, setVisible] = useState(false)
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [isTouchDevice, setIsTouchDevice] = useState(false)
@@ -231,3 +238,5 @@ export default function CardTooltip({ card, disabled, children }) {
     </div>
   )
 }
+
+export default memo(CardTooltip)

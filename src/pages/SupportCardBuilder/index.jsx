@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import SupportCardArt from '../../components/SupportCardArt.jsx'
 import TierBoard from './TierBoard.jsx'
 import BlueSparksSelector from './BlueSparksSelector.jsx'
@@ -141,33 +141,42 @@ export default function SupportCardBuilder() {
   // limit break of a card already in the deck swaps it in; a card sharing a
   // character with one already in the deck is blocked; otherwise it's added
   // if there's room (max 6).
-  function handleCardClick(entry) {
-    const cardKey = `${entry.id}-${entry.limit_break}`
-    if (deckCardIds.has(cardKey)) return
+  //
+  // Wrapped in useCallback (stable reference across renders unless
+  // deckCardIds/deckCards actually change) so TierBoard - which is
+  // React.memo'd - doesn't re-render its full ~500-1000 tile grid every time
+  // some unrelated piece of state on this page changes (a slider tick, a
+  // number input keystroke, a tab switch).
+  const handleCardClick = useCallback(
+    (entry) => {
+      const cardKey = `${entry.id}-${entry.limit_break}`
+      if (deckCardIds.has(cardKey)) return
 
-    const existing = deckCards.find((c) => c.id === entry.id)
-    let next = deckCards
-    if (existing) {
-      if (entry.limit_break <= existing.limitBreak) return
-      next = deckCards.filter((c) => c.id !== entry.id)
-    } else {
-      const sameChara = deckCards.find((c) => c.charaId === entry.chara_id)
-      if (sameChara) return
-    }
-    if (next.length >= MAX_DECK_SIZE) return
+      const existing = deckCards.find((c) => c.id === entry.id)
+      let next = deckCards
+      if (existing) {
+        if (entry.limit_break <= existing.limitBreak) return
+        next = deckCards.filter((c) => c.id !== entry.id)
+      } else {
+        const sameChara = deckCards.find((c) => c.charaId === entry.chara_id)
+        if (sameChara) return
+      }
+      if (next.length >= MAX_DECK_SIZE) return
 
-    setDeckCards([
-      ...next,
-      {
-        id: entry.id,
-        charaId: entry.chara_id,
-        limitBreak: entry.limit_break,
-        cardName: entry.card_name,
-        cardRarity: entry.card_rarity,
-        cardType: entry.card_type,
-      },
-    ])
-  }
+      setDeckCards([
+        ...next,
+        {
+          id: entry.id,
+          charaId: entry.chara_id,
+          limitBreak: entry.limit_break,
+          cardName: entry.card_name,
+          cardRarity: entry.card_rarity,
+          cardType: entry.card_type,
+        },
+      ])
+    },
+    [deckCardIds, deckCards],
+  )
 
   function removeCard(id) {
     setDeckCards((prev) => prev.filter((c) => c.id !== id))
@@ -177,28 +186,36 @@ export default function SupportCardBuilder() {
     setDeckCards([])
   }
 
-  function getCardDisabledInfo(entry) {
-    const cardKey = `${entry.id}-${entry.limit_break}`
-    if (deckCardIds.has(cardKey)) return { disabled: true, reason: 'IN DECK' }
+  // Also stabilized with useCallback for the same reason as handleCardClick
+  // above - this is called once per visible tile on every TierBoard render,
+  // so keeping its identity stable (and TierBoard memoized) means unrelated
+  // page state changes skip that work entirely instead of re-running it for
+  // every card.
+  const getCardDisabledInfo = useCallback(
+    (entry) => {
+      const cardKey = `${entry.id}-${entry.limit_break}`
+      if (deckCardIds.has(cardKey)) return { disabled: true, reason: 'IN DECK' }
 
-    const existing = deckCards.find((c) => c.id === entry.id)
-    if (existing && existing.limitBreak > entry.limit_break) {
-      return { disabled: true, reason: `${existing.limitBreak === 4 ? 'MLB' : `${existing.limitBreak}LB`} IN DECK` }
-    }
+      const existing = deckCards.find((c) => c.id === entry.id)
+      if (existing && existing.limitBreak > entry.limit_break) {
+        return { disabled: true, reason: `${existing.limitBreak === 4 ? 'MLB' : `${existing.limitBreak}LB`} IN DECK` }
+      }
 
-    const sameChara = deckCards.find((c) => c.charaId === entry.chara_id && c.id !== entry.id)
-    if (sameChara) return { disabled: true, reason: 'SAME CHARACTER' }
+      const sameChara = deckCards.find((c) => c.charaId === entry.chara_id && c.id !== entry.id)
+      if (sameChara) return { disabled: true, reason: 'SAME CHARACTER' }
 
-    // BUGFIX: a brand-new, non-conflicting card used to render as fully
-    // clickable even with a full 6-card deck (this check only lived in
-    // handleCardClick, which silently no-ops) - swaps (existing set) are
-    // still allowed since they don't change the deck's size.
-    if (!existing && deckCards.length >= MAX_DECK_SIZE) {
-      return { disabled: true, reason: 'DECK FULL' }
-    }
+      // BUGFIX: a brand-new, non-conflicting card used to render as fully
+      // clickable even with a full 6-card deck (this check only lived in
+      // handleCardClick, which silently no-ops) - swaps (existing set) are
+      // still allowed since they don't change the deck's size.
+      if (!existing && deckCards.length >= MAX_DECK_SIZE) {
+        return { disabled: true, reason: 'DECK FULL' }
+      }
 
-    return { disabled: false }
-  }
+      return { disabled: false }
+    },
+    [deckCardIds, deckCards],
+  )
 
   const success = tierlistResult && 'tierlist' in tierlistResult
 
@@ -297,14 +314,14 @@ export default function SupportCardBuilder() {
                   <div key={c.id} className="scb-deck-slot">
                     <button
                       type="button"
-                      className="scb-deck-slot-remove"
+                      className="scb-deck-slot-card"
                       onClick={() => removeCard(c.id)}
-                      aria-label={`Remove ${c.cardName}`}
-                      title="Remove from deck"
+                      aria-label={`Remove ${c.cardName} from deck`}
+                      title="Click to remove from deck"
                     >
-                      ✕
+                      <SupportCardArt cardId={c.id} name={c.cardName} width={96} />
+                      <span className="scb-deck-slot-remove-overlay">✕ Remove</span>
                     </button>
-                    <SupportCardArt cardId={c.id} name={c.cardName} width={96} />
                     <div className="scb-deck-slot-label">
                       {c.cardName} ({c.cardRarity} {c.limitBreak === 4 ? 'MLB' : `${c.limitBreak}LB`})
                     </div>
@@ -391,19 +408,31 @@ export default function SupportCardBuilder() {
             </div>
           </div>
 
-          {isGenerating && <p className="field-hint">Calculating...</p>}
+          {/* Only block on a full "Calculating..." message for the true first
+              computation (no tier list has ever been produced yet). Once a
+              result exists, DeckStatPreview/TierBoard stay mounted through
+              every later recompute - unmounting them here would wipe out
+              TierBoard's own filter state on every single deck/config change,
+              which is what made the site feel like it was reloading. A
+              small "Recalculating..." badge (rendered alongside the still-
+              visible, slightly stale board) replaces that full blocking
+              message for every change after the first. */}
+          {isGenerating && !tierlistResult && <p className="field-hint">Calculating...</p>}
 
-          {!isGenerating && success && deckCards.length > 0 && (
+          {success && deckCards.length > 0 && (
             <DeckStatPreview deck={tierlistResult.deck} maxStats={maxStats} sparkCapBonus={sparkBonuses} />
           )}
 
-          {!isGenerating && success && (
-            <TierBoard
-              tierlist={tierlistResult.tierlist}
-              getCardDisabledInfo={getCardDisabledInfo}
-              onCardClick={handleCardClick}
-              ownedCards={ownedCards}
-            />
+          {success && (
+            <>
+              {isGenerating && <p className="scb-stale-indicator">Recalculating...</p>}
+              <TierBoard
+                tierlist={tierlistResult.tierlist}
+                getCardDisabledInfo={getCardDisabledInfo}
+                onCardClick={handleCardClick}
+                ownedCards={ownedCards}
+              />
+            </>
           )}
 
           {!isGenerating && tierlistResult && !success && (

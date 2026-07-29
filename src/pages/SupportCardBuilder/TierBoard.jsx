@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { memo, useMemo, useState } from 'react'
 import { GRADES } from '../../data/constants.js'
 import SupportCardArt from '../../components/SupportCardArt.jsx'
 import CardTooltip from './CardTooltip.jsx'
@@ -57,7 +57,74 @@ function sortHintTypes(types) {
   })
 }
 
-export default function TierBoard({ tierlist, getCardDisabledInfo, onCardClick, ownedCards }) {
+// One tier-list tile, extracted to its own component (rather than inline
+// JSX in the .map() below) so it can be memoized. With up to ~470-1175
+// cards mounted at once (every limit break of every card the current
+// limit-break filter allows), re-rendering the entire grid on every
+// TierBoard render (e.g. from an unrelated filter checkbox toggling) is the
+// single biggest perf cost in this tool - memoizing lets React skip a tile
+// entirely when nothing about it actually changed.
+//
+// `card` and `substatsToDisplay` are stable object/array references across
+// re-renders that don't actually change the underlying data (see the
+// useMemo calls in TierBoard below), so those can use plain reference
+// equality. `disabledInfo` is recomputed fresh every render (it's cheap:
+// a couple of Set/array lookups), so it gets a new object identity each
+// time even when its actual `disabled`/`reason` values haven't changed -
+// the custom comparator below checks those values directly instead of
+// object identity so the tile still skips re-rendering in the common case.
+const TierTile = memo(function TierTile({ card, disabledInfo, onCardClick, substatsToDisplay }) {
+  return (
+    <CardTooltip card={card} disabled={disabledInfo.disabled}>
+      <button
+        type="button"
+        className={`scb-tier-tile ${disabledInfo.disabled ? 'scb-tier-tile-disabled' : ''}`}
+        disabled={disabledInfo.disabled}
+        onClick={() => onCardClick(card)}
+      >
+        <span className="scb-tier-tile-score">{card.score.toFixed(0)}</span>
+        {substatsToDisplay.map(({ effectName, slot, color }) => (
+          <span
+            key={slot}
+            className="scb-substat-badge"
+            style={{ top: 6 + slot * 20, left: 6, right: 'auto', background: color }}
+            title={effectName}
+          >
+            {Math.round(card.support_effects?.[effectName] || 0)}
+          </span>
+        ))}
+        <SupportCardArt cardId={card.id} name={card.card_name} width={96} />
+        <div className="scb-tier-tile-footer">
+          <span
+            className="scb-tier-tile-rarity"
+            style={{ background: RARITY_COLORS[card.card_rarity] || 'var(--border)' }}
+          >
+            {card.card_rarity}
+          </span>
+          <span className="scb-tier-tile-lb">{lbLabel(card.limit_break)}</span>
+        </div>
+        {disabledInfo.disabled && (
+          <span className="scb-tier-tile-disabled-reason">{disabledInfo.reason}</span>
+        )}
+      </button>
+    </CardTooltip>
+  )
+}, (prev, next) =>
+  prev.card === next.card &&
+  prev.onCardClick === next.onCardClick &&
+  prev.substatsToDisplay === next.substatsToDisplay &&
+  prev.disabledInfo.disabled === next.disabledInfo.disabled &&
+  prev.disabledInfo.reason === next.disabledInfo.reason,
+)
+
+// The whole board is memoized too - its props (tierlist, ownedCards, and
+// the useCallback'd getCardDisabledInfo/onCardClick from the parent page)
+// are all reference-stable between renders unless something that actually
+// affects this tool's output changed, so an unrelated bit of page state
+// (a slider tick, a keystroke elsewhere on the page) no longer forces this
+// entire tool - filters, tier bucketing, and every tile - to recompute and
+// re-render.
+function TierBoard({ tierlist, getCardDisabledInfo, onCardClick, ownedCards }) {
   const [limitBreakFilter, setLimitBreakFilter] = useState(DEFAULT_LIMIT_BREAK_FILTER)
   const [hintTypeFilters, setHintTypeFilters] = useState(() => new Set())
   const [showOwnedOnly, setShowOwnedOnly] = useState(false)
@@ -87,10 +154,17 @@ export default function TierBoard({ tierlist, getCardDisabledInfo, onCardClick, 
 
   const firstEmptySlot = substatSlots.findIndex((s) => s === '')
   const visibleSlotCount = firstEmptySlot === -1 ? substatSlots.length : firstEmptySlot + 1
-  const substatsToDisplay = substatSlots
-    .slice(0, visibleSlotCount)
-    .map((effectName, slot) => (effectName ? { effectName, slot, color: SUBSTAT_SLOT_COLORS[slot] } : null))
-    .filter(Boolean)
+  // Memoized so its reference stays stable across renders where the substat
+  // selection hasn't changed - passed to every TierTile below, and TierTile's
+  // memo comparator relies on reference equality for this prop.
+  const substatsToDisplay = useMemo(
+    () =>
+      substatSlots
+        .slice(0, visibleSlotCount)
+        .map((effectName, slot) => (effectName ? { effectName, slot, color: SUBSTAT_SLOT_COLORS[slot] } : null))
+        .filter(Boolean),
+    [substatSlots, visibleSlotCount],
+  )
 
   function toggleHintType(type) {
     setHintTypeFilters((prev) => {
@@ -174,20 +248,42 @@ export default function TierBoard({ tierlist, getCardDisabledInfo, onCardClick, 
     return true
   }
 
-  if (allEntries.length === 0) {
-    return <p className="empty-state">No cards to show.</p>
-  }
-
   // Bucket every card into its global S-G tier, most-impressive tier first,
   // and drop any tier that ends up empty once filters are applied - one
   // combined ranking across every card type, matching the reference site's
   // tier-list layout (rather than a separate ranking per type).
-  const tiers = GRADES.map((grade) => {
-    const cards = allEntries
-      .filter((c) => assignTier(c.score) === grade && passesFilters(c))
-      .sort((a, b) => b.score - a.score)
-    return { grade, cards }
-  }).filter((t) => t.cards.length > 0)
+  //
+  // Memoized: this is an O(n) filter + O(n log n) sort over up to ~1175
+  // entries repeated for all 7 grades. Previously this ran on every
+  // TierBoard render, including renders that had nothing to do with any of
+  // its own inputs (e.g. re-renders bubbling down from a parent-level state
+  // change now that TierBoard is memoized and its props are stable - but
+  // this useMemo also protects against any future non-memoized parent).
+  // passesFilters closes over typeFilter/limitBreakFilter/hintTypeFilters/
+  // showOwnedOnly/ownedCards, all listed in the dependency array below, so
+  // the memoized result always reflects the current filter state.
+  //
+  // IMPORTANT: this must run unconditionally, before the `allEntries.length
+  // === 0` early return below - React requires the same hooks to run in the
+  // same order on every render, and this component previously had that
+  // early return ahead of where this useMemo lives, which would skip this
+  // hook entirely on empty-tierlist renders while calling it on every other
+  // render ("Rendered more/fewer hooks than during the previous render").
+  const tiers = useMemo(
+    () =>
+      GRADES.map((grade) => {
+        const cards = allEntries
+          .filter((c) => assignTier(c.score) === grade && passesFilters(c))
+          .sort((a, b) => b.score - a.score)
+        return { grade, cards }
+      }).filter((t) => t.cards.length > 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [allEntries, assignTier, typeFilter, limitBreakFilter, hintTypeFilters, showOwnedOnly, ownedCards],
+  )
+
+  if (allEntries.length === 0) {
+    return <p className="empty-state">No cards to show.</p>
+  }
 
   const visibleCount = tiers.reduce((sum, t) => sum + t.cards.length, 0)
 
@@ -338,44 +434,15 @@ export default function TierBoard({ tierlist, getCardDisabledInfo, onCardClick, 
               {cards.length} card{cards.length === 1 ? '' : 's'} • Score range: {cards[cards.length - 1].score.toFixed(0)} - {cards[0].score.toFixed(0)}
             </div>
             <div className="scb-tier-row-cards">
-              {cards.map((card) => {
-                const disabledInfo = getCardDisabledInfo(card)
-                return (
-                  <CardTooltip key={`${card.id}-${card.limit_break}`} card={card} disabled={disabledInfo.disabled}>
-                    <button
-                      type="button"
-                      className={`scb-tier-tile ${disabledInfo.disabled ? 'scb-tier-tile-disabled' : ''}`}
-                      disabled={disabledInfo.disabled}
-                      onClick={() => onCardClick(card)}
-                    >
-                      <span className="scb-tier-tile-score">{card.score.toFixed(0)}</span>
-                      {substatsToDisplay.map(({ effectName, slot, color }) => (
-                        <span
-                          key={slot}
-                          className="scb-substat-badge"
-                          style={{ top: 6 + slot * 20, left: 6, right: 'auto', background: color }}
-                          title={effectName}
-                        >
-                          {Math.round(card.support_effects?.[effectName] || 0)}
-                        </span>
-                      ))}
-                      <SupportCardArt cardId={card.id} name={card.card_name} width={96} />
-                      <div className="scb-tier-tile-footer">
-                        <span
-                          className="scb-tier-tile-rarity"
-                          style={{ background: RARITY_COLORS[card.card_rarity] || 'var(--border)' }}
-                        >
-                          {card.card_rarity}
-                        </span>
-                        <span className="scb-tier-tile-lb">{lbLabel(card.limit_break)}</span>
-                      </div>
-                      {disabledInfo.disabled && (
-                        <span className="scb-tier-tile-disabled-reason">{disabledInfo.reason}</span>
-                      )}
-                    </button>
-                  </CardTooltip>
-                )
-              })}
+              {cards.map((card) => (
+                <TierTile
+                  key={`${card.id}-${card.limit_break}`}
+                  card={card}
+                  disabledInfo={getCardDisabledInfo(card)}
+                  onCardClick={onCardClick}
+                  substatsToDisplay={substatsToDisplay}
+                />
+              ))}
             </div>
           </div>
         </div>
@@ -383,3 +450,5 @@ export default function TierBoard({ tierlist, getCardDisabledInfo, onCardClick, 
     </div>
   )
 }
+
+export default memo(TierBoard)
