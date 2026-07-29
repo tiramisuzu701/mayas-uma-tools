@@ -347,7 +347,6 @@ export default function TierBoard({ tierlist, getCardDisabledInfo, onCardClick, 
                       className={`scb-tier-tile ${disabledInfo.disabled ? 'scb-tier-tile-disabled' : ''}`}
                       disabled={disabledInfo.disabled}
                       onClick={() => onCardClick(card)}
-                      title={`${card.card_name} (${card.card_rarity} ${lbLabel(card.limit_break)}) - score ${card.score.toFixed(1)}`}
                     >
                       <span className="scb-tier-tile-score">{card.score.toFixed(0)}</span>
                       {substatsToDisplay.map(({ effectName, slot, color }) => (

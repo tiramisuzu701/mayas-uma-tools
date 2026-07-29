@@ -93,9 +93,20 @@ export default function CardTooltip({ card, disabled, children }) {
     }
   }, [isTouchDevice, visible])
 
+  // The container div uses `display: contents` so it doesn't affect the
+  // surrounding grid/flex layout (see the JSX below) - but that also means
+  // it never generates its own box, so `e.currentTarget.getBoundingClientRect()`
+  // always returns a zero rect (0,0,0,0) in every browser, which is why the
+  // tooltip used to always land pinned to the top-left corner regardless of
+  // which card was actually hovered. Read the rect from the real rendered
+  // child (the card button passed in as `children`) instead.
+  function getTriggerRect(e) {
+    return containerRef.current?.firstElementChild?.getBoundingClientRect() || e.currentTarget.getBoundingClientRect()
+  }
+
   function handleMouseEnter(e) {
     if (isTouchDevice || disabled) return
-    const rect = e.currentTarget.getBoundingClientRect()
+    const rect = getTriggerRect(e)
     clearTimeout(timeoutRef.current)
     timeoutRef.current = setTimeout(() => {
       setPosition(calculatePosition(rect))
@@ -111,7 +122,7 @@ export default function CardTooltip({ card, disabled, children }) {
 
   function handleTouchStart(e) {
     if (!isTouchDevice || disabled || visible) return
-    const rect = e.currentTarget.getBoundingClientRect()
+    const rect = getTriggerRect(e)
     setPosition(calculatePosition(rect))
     setVisible(true)
   }
