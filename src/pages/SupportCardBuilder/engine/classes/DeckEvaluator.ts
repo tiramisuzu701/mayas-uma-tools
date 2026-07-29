@@ -1,0 +1,832 @@
+import { SupportCard } from "./SupportCard";
+import { TrainingData } from "../config/trainingData";
+import { StatsDict, HintResult } from "../types/cardTypes";
+import { isSupportCardAllowedInScenario } from "../config/supportCardScenarios";
+
+interface CardAppearance {
+    card: SupportCard;
+    index: number;
+    cardType: string;
+    rainbowSpecialty: number; // Probability of appearing on specialty training when bonded
+    offSpecialty: number; // Probability of appearing on off-specialty training
+}
+
+interface TrainingCombination {
+    cards: CardAppearance[];
+    probability: number;
+}
+
+export class DeckEvaluator {
+    private static readonly typeToIndex: Record<string, number> = {
+        Speed: 0,
+        Stamina: 1,
+        Power: 2,
+        Guts: 3,
+        Intelligence: 4,
+    };
+
+    // Energy-economy constants used to compute the per-deck rest budget (see
+    // evaluateStats). Tunable; prior behaviour assumed a flat 3 rests for
+    // every deck regardless of how energy-expensive its facility mix was.
+    /** Starting energy at the beginning of the career. */
+    private static readonly ENERGY_START = 100;
+    /** Base energy regenerated per rest turn (boosted by Event Recovery). */
+    private static readonly REST_REGEN_BASE = 50;
+
+    public deck: SupportCard[] = [];
+    public manualDistribution: number[] | null = null;
+
+    constructor() {
+        this.deck = [];
+    }
+
+    public setManualDistribution(distribution: number[] | null): void {
+        this.manualDistribution = distribution;
+    }
+
+    public addCard(card: SupportCard): void {
+        this.deck.push(card);
+    }
+
+    public getTrainingDistribution(scenarioName: string = "URA"): number[] {
+        if (this.manualDistribution) {
+            return this.manualDistribution;
+        }
+
+        // Baseline weight applied equally to every training type, so that even
+        // with high Specialty Priority a deck doesn't tunnel onto one type.
+        // Configurable per-scenario via TrainingData.getBaselineTrainingWeight.
+        const baselineWeight =
+            TrainingData.getBaselineTrainingWeight(scenarioName);
+        const trainingDistribution = [
+            baselineWeight,
+            baselineWeight,
+            baselineWeight,
+            baselineWeight,
+            baselineWeight,
+        ];
+
+        for (const card of this.deck) {
+            const idx = DeckEvaluator.typeToIndex[card.cardType.type];
+            if (idx !== undefined) {
+                trainingDistribution[idx] +=
+                    (card.cardBonus["Specialty Priority"] !== -1
+                        ? card.cardBonus["Specialty Priority"] || 0
+                        : 0) / 100;
+            }
+        }
+
+        // Normalize
+        const total = trainingDistribution.reduce((sum, val) => sum + val, 0);
+        let normalizedDistribution: number[];
+        if (total !== 0) {
+            normalizedDistribution = trainingDistribution.map((x) => x / total);
+        } else {
+            normalizedDistribution = [0.2, 0.2, 0.2, 0.2, 0.2];
+        }
+
+        // Cap at 50%
+        const maxTrainingPercentage = 0.5;
+        const maxValue = Math.max(...normalizedDistribution);
+        if (maxValue > maxTrainingPercentage) {
+            const maxIndex = normalizedDistribution.indexOf(maxValue);
+            const excess = maxValue - maxTrainingPercentage;
+            normalizedDistribution[maxIndex] = maxTrainingPercentage;
+            
+            const remainingSum = normalizedDistribution.reduce((sum, val, idx) => 
+                idx === maxIndex ? sum : sum + val, 0);
+            
+            if (remainingSum > 0) {
+                for (let i = 0; i < normalizedDistribution.length; i++) {
+                    if (i !== maxIndex) {
+                        normalizedDistribution[i] += excess * (normalizedDistribution[i] / remainingSum);
+                    }
+                }
+            } else {
+                const redistributed = excess / (normalizedDistribution.length - 1);
+                for (let i = 0; i < normalizedDistribution.length; i++) {
+                    if (i !== maxIndex) {
+                        normalizedDistribution[i] += redistributed;
+                    }
+                }
+            }
+        }
+
+        return normalizedDistribution;
+    }
+
+    /**
+     * Generate all possible combinations of cards (power set)
+     */
+    private getCombinations(cards: CardAppearance[], minLength: number = 0): CardAppearance[][] {
+        const combinations: CardAppearance[][] = [];
+        const count = Math.pow(2, cards.length);
+
+        for (let i = 0; i < count; i++) {
+            const temp: CardAppearance[] = [];
+            for (let j = 0; j < cards.length; j++) {
+                if (i & Math.pow(2, j)) {
+                    temp.push(cards[j]);
+                }
+            }
+            if (temp.length >= minLength) {
+                combinations.push(temp);
+            }
+        }
+
+        return combinations;
+    }
+
+    /**
+     * Calculate the probability of a specific combination appearing at a training
+     */
+    private calculateCombinationProbability(
+        combination: CardAppearance[],
+        allCards: CardAppearance[],
+        trainingType: string
+    ): number {
+        // Probability that all cards in combination appear
+        let probability = 1.0;
+        for (const card of combination) {
+            if (card.cardType === trainingType) {
+                probability *= card.rainbowSpecialty;
+            } else {
+                probability *= card.offSpecialty;
+            }
+        }
+
+        // Probability that all other cards DON'T appear
+        const otherCards = allCards.filter(
+            (c) => !combination.some((d) => c.index === d.index)
+        );
+        for (const card of otherCards) {
+            if (card.cardType === trainingType) {
+                probability *= (1 - card.rainbowSpecialty);
+            } else {
+                probability *= (1 - card.offSpecialty);
+            }
+        }
+
+        return probability;
+    }
+
+    /**
+     * Calculate stat gains for a specific training session with a combination of cards
+     */
+    private calculateTrainingGains(
+        baseStats: number[], // [Speed, Stamina, Power, Guts, Wit, SkillPts]
+        cards: CardAppearance[],
+        facilitySupportCard: SupportCard | null, // The card being evaluated
+        trainingType: string,
+        isBonded: boolean,
+        scenarioName: string,
+        facilityMultiplier: number,
+        moodBonus: number,
+    ): number[] {
+        const gains = [0, 0, 0, 0, 0, 0]; // Speed, Stamina, Power, Guts, Wit, SkillPts
+
+        if (!facilitySupportCard) {
+            return gains;
+        }
+
+        // Scenario-granted progressive Friendship Bonus that applies to all cards
+        // (e.g. Grand Concert's Concert Bonuses), in percentage points. Added to
+        // each card's own Friendship Bonus so decks stacked with friendship cards
+        // benefit more. Cards without a Friendship Bonus (cardBonus === -1) are
+        // skipped at the consumption sites below.
+        const cardBuffFriendship = TrainingData.getCardBuffs(scenarioName)["Friendship Bonus"];
+
+        // Base training effectiveness (starts at 1.0, individual card TEs added below)
+        let trainingEffectiveness = 1.0;
+        let friendshipBonus = 1.0;
+        let moodEffect = 1.0;
+
+        // Stat bonuses from all cards appearing
+        const statBonuses = [0, 0, 0, 0, 0, 0];
+        
+        // Add the facility card's bonuses
+        statBonuses[0] += facilitySupportCard.cardBonus["Speed Bonus"] !== -1 ? facilitySupportCard.cardBonus["Speed Bonus"] || 0 : 0;
+        statBonuses[1] += facilitySupportCard.cardBonus["Stamina Bonus"] !== -1 ? facilitySupportCard.cardBonus["Stamina Bonus"] || 0 : 0;
+        statBonuses[2] += facilitySupportCard.cardBonus["Power Bonus"] !== -1 ? facilitySupportCard.cardBonus["Power Bonus"] || 0 : 0;
+        statBonuses[3] += facilitySupportCard.cardBonus["Guts Bonus"] !== -1 ? facilitySupportCard.cardBonus["Guts Bonus"] || 0 : 0;
+        statBonuses[4] += facilitySupportCard.cardBonus["Wit Bonus"] !== -1 ? facilitySupportCard.cardBonus["Wit Bonus"] || 0 : 0;
+
+        trainingEffectiveness += (facilitySupportCard.cardBonus["Training Effectiveness"] !== -1 
+            ? facilitySupportCard.cardBonus["Training Effectiveness"] || 0 
+            : 0) / 100;
+
+        if (isBonded) {
+            friendshipBonus += (facilitySupportCard.cardBonus["Friendship Bonus"] !== -1
+                ? (facilitySupportCard.cardBonus["Friendship Bonus"] || 0) + cardBuffFriendship
+                : 0) / 100;
+            moodEffect += (facilitySupportCard.cardBonus["Mood Effect"] !== -1 
+                ? facilitySupportCard.cardBonus["Mood Effect"] || 0 
+                : 0) / 100;
+        }
+
+        // Add bonuses from cards in the combination
+        for (const cardAppearance of cards) {
+            const card = cardAppearance.card;
+            statBonuses[0] += card.cardBonus["Speed Bonus"] !== -1 ? card.cardBonus["Speed Bonus"] || 0 : 0;
+            statBonuses[1] += card.cardBonus["Stamina Bonus"] !== -1 ? card.cardBonus["Stamina Bonus"] || 0 : 0;
+            statBonuses[2] += card.cardBonus["Power Bonus"] !== -1 ? card.cardBonus["Power Bonus"] || 0 : 0;
+            statBonuses[3] += card.cardBonus["Guts Bonus"] !== -1 ? card.cardBonus["Guts Bonus"] || 0 : 0;
+            statBonuses[4] += card.cardBonus["Wit Bonus"] !== -1 ? card.cardBonus["Wit Bonus"] || 0 : 0;
+
+            trainingEffectiveness += (card.cardBonus["Training Effectiveness"] !== -1 
+                ? card.cardBonus["Training Effectiveness"] || 0 
+                : 0) / 100;
+
+            if (isBonded && card.cardType.type === trainingType) {
+                friendshipBonus *= 1 + ((card.cardBonus["Friendship Bonus"] !== -1
+                    ? (card.cardBonus["Friendship Bonus"] || 0) + cardBuffFriendship
+                    : 0) / 100);
+                moodEffect += (card.cardBonus["Mood Effect"] !== -1 
+                    ? card.cardBonus["Mood Effect"] || 0 
+                    : 0) / 100;
+            }
+        }
+
+        // Crowd bonus: 5% per card appearing (including the facility card)
+        const crowdBonus = 1.0 + (0.05 * (cards.length + 1));
+
+        // Calculate gains for each stat (capped at 100 per training)
+        // Mood effect modifies the mood bonus: finalMood = 1 + (moodBonus - 1) * moodEffect
+        const finalMoodMultiplier = 1 + ((moodBonus - 1) * moodEffect);
+        
+        for (let i = 0; i < 5; i++) {
+            const baseStat = baseStats[i] + statBonuses[i];
+            const calculatedGain = Math.floor(
+                baseStat *
+                finalMoodMultiplier *
+                facilityMultiplier *
+                trainingEffectiveness *
+                friendshipBonus *
+                crowdBonus
+            );
+            gains[i] = calculatedGain;
+        }
+
+        // Skill points (if applicable, not capped)
+        if (baseStats[5]) {
+            gains[5] = Math.floor(
+                (baseStats[5] + statBonuses[5]) *
+                finalMoodMultiplier *
+                facilityMultiplier *
+                trainingEffectiveness *
+                crowdBonus
+            );
+        }
+
+        return gains;
+    }
+
+    public evaluateStats(
+        scenarioName: string = "URA",
+        averageMoodBonus: number = 20,
+        optionalRaces: {G1: number, G2or3: number, PreOPorOP: number} = {G1: 0, G2or3: 0, PreOPorOP: 0},
+        debug: boolean = false,
+    ): StatsDict {
+        const trainingDistribution = this.getTrainingDistribution(scenarioName);
+        const forcedRaces = TrainingData.getForcedRaces(scenarioName);
+
+        const totalStatsGained: StatsDict = {
+            Speed: 0,
+            Stamina: 0,
+            Power: 0,
+            Guts: 0,
+            Wit: 0,
+            "Skill Points": 0,
+        };
+
+        let eventEffectiveness = 0;
+        let eventRecovery = 0;
+        let energyCostReduction = 0; // summed as a fraction (cardBonus/100)
+        let raceBonus = 0;
+
+        const totalOptionalRaces = optionalRaces.G1 + optionalRaces.G2or3 + optionalRaces.PreOPorOP;
+        // Total playable turns before rests are subtracted. The number of rests
+        // is now derived from the deck's energy economy below (was a flat -3).
+        const totalPlayableTurns = 72 + 6 - forcedRaces - totalOptionalRaces;
+
+        // Prepare card appearances with specialty rates
+        const cardAppearances: CardAppearance[] = [];
+        
+        for (let i = 0; i < this.deck.length; i++) {
+            const card = this.deck[i];
+            
+            // Check if support card is allowed in this scenario
+            if (!isSupportCardAllowedInScenario(card.id.toString(), scenarioName)) {
+                continue; // Skip cards not allowed in this scenario
+            }
+            
+            // Skip Support and Unknown card types - they don't appear at training facilities
+            if (
+                card.cardType.type === "Support" ||
+                card.cardType.type === "Unknown"
+            ) {
+                // Still add their event stats and initial stats below
+                // Add event stats
+                totalStatsGained.Speed += (card.eventsStatReward.Speed || 0) * (1 + eventEffectiveness);
+                totalStatsGained.Stamina += (card.eventsStatReward.Stamina || 0) * (1 + eventEffectiveness);
+                totalStatsGained.Power += (card.eventsStatReward.Power || 0) * (1 + eventEffectiveness);
+                totalStatsGained.Guts += (card.eventsStatReward.Guts || 0) * (1 + eventEffectiveness);
+                totalStatsGained.Wit! += (card.eventsStatReward.Wit || 0) * (1 + eventEffectiveness);
+                totalStatsGained["Skill Points"]! += (card.eventsStatReward.Potential || 0) * (1 + eventEffectiveness);
+
+                // Add initial stats
+                if (card.cardBonus["Initial Speed"] !== -1) {
+                    totalStatsGained.Speed += card.cardBonus["Initial Speed"];
+                }
+                if (card.cardBonus["Initial Stamina"] !== -1) {
+                    totalStatsGained.Stamina += card.cardBonus["Initial Stamina"];
+                }
+                if (card.cardBonus["Initial Power"] !== -1) {
+                    totalStatsGained.Power += card.cardBonus["Initial Power"];
+                }
+                if (card.cardBonus["Initial Guts"] !== -1) {
+                    totalStatsGained.Guts += card.cardBonus["Initial Guts"];
+                }
+                if (card.cardBonus["Initial Wit"] !== -1) {
+                    totalStatsGained.Wit! += card.cardBonus["Initial Wit"];
+                }
+
+                eventEffectiveness += (card.cardBonus["Event Effectiveness"] !== -1
+                    ? card.cardBonus["Event Effectiveness"] || 0
+                    : 0) / 100;
+                eventRecovery += (card.cardBonus["Event Recovery"] !== -1
+                    ? card.cardBonus["Event Recovery"] || 0
+                    : 0) / 100;
+                energyCostReduction += (card.cardBonus["Energy Cost Reduction"] !== -1
+                    ? card.cardBonus["Energy Cost Reduction"] || 0
+                    : 0) / 100;
+                raceBonus += (card.cardBonus["Race Bonus"] !== -1
+                    ? card.cardBonus["Race Bonus"] || 0
+                    : 0) / 100;
+                
+                continue; // Skip adding to cardAppearances
+            }
+            
+            // Calculate specialty rates. Apply any scenario-granted progressive
+            // Speciality Priority bonus (e.g. Grand Concert Concert Bonuses) to the
+            // card's own value, but only when the card actually has a specialty
+            // priority (cardBonus === -1 means the stat is not applicable, e.g.
+            // friend/group cards that don't appear on specialty training).
+            const cardSpecialty = card.cardBonus["Specialty Priority"];
+            const cardBuffSpecialty = TrainingData.getCardBuffs(scenarioName)["Specialty Priority"];
+            const specialtyRate = cardSpecialty !== -1
+                ? (cardSpecialty || 0) + cardBuffSpecialty
+                : 0;
+            
+            // Total weight = (100 + specialtyPriority) + 4*100 + 50 = 550 + specialtyPriority
+            // Specialty:    (100 + specialtyPriority) / (550 + specialtyPriority) ~18% base
+            // Off-specialty: 100 / (550 + specialtyPriority)
+            // No appearance:  50 / (550 + specialtyPriority)
+            const totalWeight = 550 + specialtyRate;
+            const rainbowSpecialty = (100 + specialtyRate) / totalWeight;
+            const offSpecialty = 100 / totalWeight;
+
+            cardAppearances.push({
+                card: card,
+                index: i,
+                cardType: card.cardType.type,
+                rainbowSpecialty: rainbowSpecialty,
+                offSpecialty: offSpecialty,
+            });
+
+            // Add event stats
+            totalStatsGained.Speed += (card.eventsStatReward.Speed || 0) * (1 + eventEffectiveness);
+            totalStatsGained.Stamina += (card.eventsStatReward.Stamina || 0) * (1 + eventEffectiveness);
+            totalStatsGained.Power += (card.eventsStatReward.Power || 0) * (1 + eventEffectiveness);
+            totalStatsGained.Guts += (card.eventsStatReward.Guts || 0) * (1 + eventEffectiveness);
+            totalStatsGained.Wit! += (card.eventsStatReward.Wit || 0) * (1 + eventEffectiveness);
+            totalStatsGained["Skill Points"]! += (card.eventsStatReward.Potential || 0) * (1 + eventEffectiveness);
+
+            // Add initial stats
+            if (card.cardBonus["Initial Speed"] !== -1) {
+                totalStatsGained.Speed += card.cardBonus["Initial Speed"];
+            }
+            if (card.cardBonus["Initial Stamina"] !== -1) {
+                totalStatsGained.Stamina += card.cardBonus["Initial Stamina"];
+            }
+            if (card.cardBonus["Initial Power"] !== -1) {
+                totalStatsGained.Power += card.cardBonus["Initial Power"];
+            }
+            if (card.cardBonus["Initial Guts"] !== -1) {
+                totalStatsGained.Guts += card.cardBonus["Initial Guts"];
+            }
+            if (card.cardBonus["Initial Wit"] !== -1) {
+                totalStatsGained.Wit! += card.cardBonus["Initial Wit"];
+            }
+
+            eventEffectiveness += (card.cardBonus["Event Effectiveness"] !== -1
+                ? card.cardBonus["Event Effectiveness"] || 0
+                : 0) / 100;
+            eventRecovery += (card.cardBonus["Event Recovery"] !== -1
+                ? card.cardBonus["Event Recovery"] || 0
+                : 0) / 100;
+            energyCostReduction += (card.cardBonus["Energy Cost Reduction"] !== -1
+                ? card.cardBonus["Energy Cost Reduction"] || 0
+                : 0) / 100;
+            raceBonus += (card.cardBonus["Race Bonus"] !== -1
+                ? card.cardBonus["Race Bonus"] || 0
+                : 0) / 100;
+
+        }
+
+        // ----- Energy-based training-turn budget -----
+        // Replaces a flat "-3 rest turns" assumption. Each training turn
+        // consumes energy (the 7th element of each facility's stat array; e.g.
+        // URA Speed −21, Intelligence +5). Decks that train expensive
+        // facilities (Stamina/Guts) need more rests and so get fewer training
+        // turns; decks heavy on Intelligence (energy-positive) need few or
+        // none. Event Recovery (card bonus) boosts per-rest regen; Energy
+        // Cost Reduction makes each training cheaper. Both were previously
+        // accumulated but never used — they now directly buy more training
+        // turns, so recovery/cost-reduction cards get credit.
+        const baseTrainingStats = TrainingData.getBaseTrainingStats(scenarioName);
+        const facilityEnergyCosts = (["Speed", "Stamina", "Power", "Guts", "Intelligence"] as const).map(
+            (n) => baseTrainingStats[n]?.[6] ?? 0,
+        );
+        let weightedEnergyDelta = 0;
+        for (let t = 0; t < 5; t++) {
+            weightedEnergyDelta += trainingDistribution[t] * facilityEnergyCosts[t];
+        }
+        const energyCostReductionFraction = Math.min(0.8, energyCostReduction); // cap 80%
+        const energyPerTraining = Math.max(0, -weightedEnergyDelta * (1 - energyCostReductionFraction));
+        const restRegen = DeckEvaluator.REST_REGEN_BASE * (1 + Math.min(2, eventRecovery));
+        let maxTrainingTurns: number;
+        if (energyPerTraining <= 0.001) {
+            // Energy-neutral or positive (Wit-heavy) — no rests needed.
+            maxTrainingTurns = totalPlayableTurns;
+        } else {
+            maxTrainingTurns = Math.floor(
+                (DeckEvaluator.ENERGY_START + totalPlayableTurns * restRegen) /
+                (energyPerTraining + restRegen),
+            );
+        }
+        // Clamp: never exceed totalPlayableTurns, and never go so low that the
+        // deck is unplayable (at most 30 rest turns).
+        maxTrainingTurns = Math.max(
+            Math.min(maxTrainingTurns, totalPlayableTurns),
+            totalPlayableTurns - 30,
+        );
+
+        // Calculate training turns to bond for each card
+        for (const card of this.deck) {
+            const bondNeededToFriendship = Math.max(
+                80 -
+                    (card.cardBonus["Initial Friendship Gauge"] !== -1
+                        ? card.cardBonus["Initial Friendship Gauge"] || 0
+                        : 0) -
+                    (card.eventsStatReward.Bond || 0),
+                0,
+            );
+            card.turnsToMaxBond = Math.ceil(bondNeededToFriendship / 7);
+            card.maxFriendshipTurns = maxTrainingTurns - card.turnsToMaxBond;
+        }
+
+        // Simulate training at each facility using combinatorics
+        const facilityMultipliers = TrainingData.getFacilityMultipliers(scenarioName);
+        const trainingsPerLevel = TrainingData.getTrainingsPerFacilityLevel(scenarioName);
+        const maxFacilityLevel = TrainingData.getMaxFacilityLevel(scenarioName);
+        const moodBonus = 1 + averageMoodBonus / 100;
+        const totalGameTurns = maxTrainingTurns + forcedRaces + totalOptionalRaces;
+
+        let index = 0;
+        for (const [name, stats] of Object.entries(baseTrainingStats)) {
+            const turnsToTrainAtThisFacility = maxTrainingTurns * trainingDistribution[index];
+            const coreStats = stats.slice(0, -1); // Exclude energy cost
+            const facilityMultiplierValue = facilityMultipliers[name] || 0;
+
+            // Get cards that match this facility type
+            const facilityCards = cardAppearances.filter(
+                (ca) => ca.cardType === name
+            );
+
+            if (facilityCards.length === 0) {
+                // No cards at this facility - just base training
+                for (let turn = 0; turn < Math.ceil(turnsToTrainAtThisFacility); turn++) {
+                    const facilityMultiplier = 1 + Math.min(Math.floor(turn / trainingsPerLevel), maxFacilityLevel) * facilityMultiplierValue;
+                    
+                    const averageStatsPerTurn = coreStats.map((stat) =>
+                        Math.floor(stat * facilityMultiplier * moodBonus)
+                    );
+
+                    if (turn === Math.ceil(turnsToTrainAtThisFacility) - 1) {
+                        const fraction = turnsToTrainAtThisFacility % 1;
+                        if (fraction > 0) {
+                            totalStatsGained.Speed += averageStatsPerTurn[0] * fraction;
+                            totalStatsGained.Stamina += averageStatsPerTurn[1] * fraction;
+                            totalStatsGained.Power += averageStatsPerTurn[2] * fraction;
+                            totalStatsGained.Guts += averageStatsPerTurn[3] * fraction;
+                            totalStatsGained.Wit! += averageStatsPerTurn[4] * fraction;
+                            totalStatsGained["Skill Points"]! += (averageStatsPerTurn[5] || 0) * fraction;
+                        }
+                    } else {
+                        totalStatsGained.Speed += averageStatsPerTurn[0];
+                        totalStatsGained.Stamina += averageStatsPerTurn[1];
+                        totalStatsGained.Power += averageStatsPerTurn[2];
+                        totalStatsGained.Guts += averageStatsPerTurn[3];
+                        totalStatsGained.Wit! += averageStatsPerTurn[4];
+                        totalStatsGained["Skill Points"]! += averageStatsPerTurn[5] || 0;
+                    }
+                }
+            } else {
+                // Use combinatorics approach: generate all possible combinations of cards appearing
+                // Generate all non-empty combinations (at least 1 card must appear)
+                const allCombinations = this.getCombinations(facilityCards, 1);
+                
+                
+                // Track gains for debug
+                const totalTurnGains = [0, 0, 0, 0, 0, 0];
+                let totalProbability = 0;
+
+                // Pre-compute probability that NO specialty cards appear at this facility
+                let probabilityNoneAppear = 1.0;
+                for (const card of facilityCards) {
+                    probabilityNoneAppear *= (1 - card.rainbowSpecialty);
+                }
+
+                let lastPrintedLevel = -1;
+
+                // For each turn, evaluate all possible combinations
+                for (let turn = 0; turn < Math.ceil(turnsToTrainAtThisFacility); turn++) {
+                    const facilityMultiplier = 1 + Math.min(Math.floor(turn / trainingsPerLevel), maxFacilityLevel) * facilityMultiplierValue;
+                    const currentLevel = Math.min(Math.floor(turn / trainingsPerLevel), maxFacilityLevel);
+
+                    // Baseline (no-card) stats for this turn (TE = 1.0, no cards present)
+                    const baseStatsPerTurn = coreStats.map((stat) =>
+                        Math.floor(stat * facilityMultiplier * moodBonus)
+                    );
+
+                    // Build unified entry list: all card combos + no-card case
+                    type Entry = { label: string; gains: number[]; probability: number; totalStats: number; usedProb: number };
+                    const allEntries: Entry[] = [];
+                    let turnProbSum = 0;
+
+                    for (const combination of allCombinations) {
+                        const probability = this.calculateCombinationProbability(combination, facilityCards, name);
+                        const primaryCard = combination[0].card;
+                        const otherCards = combination.slice(1);
+                        const isBonded = turn >= primaryCard.turnsToMaxBond;
+                        const gains = this.calculateTrainingGains(
+                            coreStats, otherCards, primaryCard, name, isBonded,
+                            scenarioName, facilityMultiplier, moodBonus,
+                        );
+                        turnProbSum += probability;
+                        allEntries.push({
+                            label: combination.map(c => c.card.cardUma?.name || `Card${c.index}`).join(' + '),
+                            gains,
+                            probability,
+                            totalStats: gains.reduce((a, b) => a + b, 0),
+                            usedProb: 0,
+                        });
+                    }
+                    // No-card entry — always last after sort (lowest stats)
+                    allEntries.push({
+                        label: '(no cards)',
+                        gains: [...baseStatsPerTurn, 0],
+                        probability: probabilityNoneAppear,
+                        totalStats: baseStatsPerTurn.reduce((a, b) => a + b, 0),
+                        usedProb: 0,
+                    });
+
+                    // Sort best → worst by total stats
+                    allEntries.sort((a, b) => b.totalStats - a.totalStats);
+
+                    // Keep top actual-distribution probability mass (turns at facility / all turns incl. races).
+                    // Simulates a player only choosing to train here when good combos are present.
+                    const targetProb = turnsToTrainAtThisFacility / totalGameTurns;
+                    let accumulated = 0;
+                    const selectedEntries: { gains: number[]; probability: number }[] = [];
+                    for (const entry of allEntries) {
+                        if (accumulated >= targetProb) break;
+                        const usedProb = Math.min(entry.probability, targetProb - accumulated);
+                        selectedEntries.push({ gains: entry.gains, probability: usedProb });
+                        entry.usedProb = usedProb;
+                        accumulated += usedProb;
+                    }
+
+                    // Renormalize selected probabilities to sum to 1
+                    const selectedProbSum = selectedEntries.reduce((s, e) => s + e.probability, 0);
+
+                    // Debug table once per level (sorted, with kept marker)
+                    // Expected gains from selected (renormalized) entries
+                    const expectedGains = [0, 0, 0, 0, 0, 0];
+                    for (const entry of selectedEntries) {
+                        const normProb = selectedProbSum > 0 ? entry.probability / selectedProbSum : 0;
+                        for (let i = 0; i < 6; i++) {
+                            expectedGains[i] += (entry.gains[i] ?? 0) * normProb;
+                        }
+                    }
+
+                    if (debug && currentLevel !== lastPrintedLevel) {
+                        lastPrintedLevel = currentLevel;
+                        console.log(`\n=== Facility: ${name} | Level ${currentLevel + 1}/${maxFacilityLevel + 1} (multiplier: ${facilityMultiplier.toFixed(3)}) | keeping top ${(targetProb * 100).toFixed(1)}% of all-turn prob ===`);
+                        const rows = allEntries.map(e => ({
+                            cards: (e.usedProb > 0 ? '✓ ' : '✗ ') + e.label,
+                            prob: (e.probability * 100).toFixed(1) + '%',
+                            used: e.usedProb > 0 ? (e.usedProb * 100).toFixed(1) + '%' : '-',
+                            Speed: e.gains[0] ?? 0, Stamina: e.gains[1] ?? 0,
+                            Power: e.gains[2] ?? 0, Guts: e.gains[3] ?? 0,
+                            Wit: e.gains[4] ?? 0, SP: e.gains[5] ?? 0,
+                            total: e.totalStats,
+                        }));
+                        rows.push({
+                            cards: '→ AVERAGE',
+                            prob: '-', used: '-',
+                            Speed: Math.round(expectedGains[0]), Stamina: Math.round(expectedGains[1]),
+                            Power: Math.round(expectedGains[2]), Guts: Math.round(expectedGains[3]),
+                            Wit: Math.round(expectedGains[4]), SP: Math.round(expectedGains[5]),
+                            total: Math.round(expectedGains.reduce((a, b) => a + b, 0)),
+                        });
+                        console.table(rows);
+                    }
+
+                    // Handle partial turns
+                    let turnMultiplier = 1.0;
+                    if (turn === Math.ceil(turnsToTrainAtThisFacility) - 1) {
+                        const fraction = turnsToTrainAtThisFacility % 1;
+                        if (fraction > 0) {
+                            turnMultiplier = fraction;
+                        }
+                    }
+
+                    totalStatsGained.Speed += expectedGains[0] * turnMultiplier;
+                    totalStatsGained.Stamina += expectedGains[1] * turnMultiplier;
+                    totalStatsGained.Power += expectedGains[2] * turnMultiplier;
+                    totalStatsGained.Guts += expectedGains[3] * turnMultiplier;
+                    totalStatsGained.Wit! += expectedGains[4] * turnMultiplier;
+                    totalStatsGained["Skill Points"]! += expectedGains[5] * turnMultiplier;
+
+                    totalTurnGains[3] += expectedGains[3] * turnMultiplier;
+
+                    if (turn === 0) {
+                        totalProbability = turnProbSum;
+                    }
+                }
+            }
+
+            index++;
+        }
+
+        // Add race rewards
+        const careerRaces = TrainingData.getRaceCareerRewards(scenarioName);
+        const careerRacesFixed = TrainingData.getRaceCareerRewardsFixed(scenarioName);
+        const finaleRace = careerRaces.finaleRace || [0, 0, 0, 0, 0, 0];
+        const careerRace = careerRaces.careerRace || [0, 0, 0, 0, 0, 0];
+        const g1Rewards = careerRaces.G1 || [0, 0, 0, 0, 0, 0];
+        const g2or3Rewards = careerRaces.G2or3 || [0, 0, 0, 0, 0, 0];
+        const preOPorOPRewards = careerRaces.PreOPorOP || [0, 0, 0, 0, 0, 0];
+
+        // Fixed race rewards (no multiplier)
+        const finaleRaceFixed = careerRacesFixed.finaleRace || [0, 0, 0, 0, 0, 0];
+        const careerRaceFixed = careerRacesFixed.careerRace || [0, 0, 0, 0, 0, 0];
+        const g1RewardsFixed = careerRacesFixed.G1 || [0, 0, 0, 0, 0, 0];
+        const g2or3RewardsFixed = careerRacesFixed.G2or3 || [0, 0, 0, 0, 0, 0];
+        const preOPorOPRewardsFixed = careerRacesFixed.PreOPorOP || [0, 0, 0, 0, 0, 0];
+
+        // Always give 8 career race rewards (even if no forced races in scenario)
+        totalStatsGained.Speed += finaleRace[0] * 3 + careerRace[0] * 8 * (1 + raceBonus);
+        totalStatsGained.Stamina += finaleRace[1] * 3 + careerRace[1] * 8 * (1 + raceBonus);
+        totalStatsGained.Power += finaleRace[2] * 3 + careerRace[2] * 8 * (1 + raceBonus);
+        totalStatsGained.Guts += finaleRace[3] * 3 + careerRace[3] * 8 * (1 + raceBonus);
+        totalStatsGained.Wit! += finaleRace[4] * 3 + careerRace[4] * 8 * (1 + raceBonus);
+        totalStatsGained["Skill Points"]! += finaleRace[5] * 3 + careerRace[5] * 8 * (1 + raceBonus);
+
+        // Add G1 race rewards
+        totalStatsGained.Speed += optionalRaces.G1 * g1Rewards[0] * (1 + raceBonus);
+        totalStatsGained.Stamina += optionalRaces.G1 * g1Rewards[1] * (1 + raceBonus);
+        totalStatsGained.Power += optionalRaces.G1 * g1Rewards[2] * (1 + raceBonus);
+        totalStatsGained.Guts += optionalRaces.G1 * g1Rewards[3] * (1 + raceBonus);
+        totalStatsGained.Wit! += optionalRaces.G1 * g1Rewards[4] * (1 + raceBonus);
+        totalStatsGained["Skill Points"]! += optionalRaces.G1 * g1Rewards[5] * (1 + raceBonus);
+
+        // Add G2/G3 race rewards
+        totalStatsGained.Speed += optionalRaces.G2or3 * g2or3Rewards[0] * (1 + raceBonus);
+        totalStatsGained.Stamina += optionalRaces.G2or3 * g2or3Rewards[1] * (1 + raceBonus);
+        totalStatsGained.Power += optionalRaces.G2or3 * g2or3Rewards[2] * (1 + raceBonus);
+        totalStatsGained.Guts += optionalRaces.G2or3 * g2or3Rewards[3] * (1 + raceBonus);
+        totalStatsGained.Wit! += optionalRaces.G2or3 * g2or3Rewards[4] * (1 + raceBonus);
+        totalStatsGained["Skill Points"]! += optionalRaces.G2or3 * g2or3Rewards[5] * (1 + raceBonus);
+
+        // Add PreOP/OP race rewards
+        totalStatsGained.Speed += optionalRaces.PreOPorOP * preOPorOPRewards[0] * (1 + raceBonus);
+        totalStatsGained.Stamina += optionalRaces.PreOPorOP * preOPorOPRewards[1] * (1 + raceBonus);
+        totalStatsGained.Power += optionalRaces.PreOPorOP * preOPorOPRewards[2] * (1 + raceBonus);
+        totalStatsGained.Guts += optionalRaces.PreOPorOP * preOPorOPRewards[3] * (1 + raceBonus);
+        totalStatsGained.Wit! += optionalRaces.PreOPorOP * preOPorOPRewards[4] * (1 + raceBonus);
+        totalStatsGained["Skill Points"]! += optionalRaces.PreOPorOP * preOPorOPRewards[5] * (1 + raceBonus);
+
+        // Add fixed race rewards (no multipliers, flat amounts)
+        // Finale races: 3 fixed
+        totalStatsGained.Speed += finaleRaceFixed[0] * 3;
+        totalStatsGained.Stamina += finaleRaceFixed[1] * 3;
+        totalStatsGained.Power += finaleRaceFixed[2] * 3;
+        totalStatsGained.Guts += finaleRaceFixed[3] * 3;
+        totalStatsGained.Wit! += finaleRaceFixed[4] * 3;
+        totalStatsGained["Skill Points"]! += finaleRaceFixed[5] * 3;
+
+        // Career races: 8 fixed
+        totalStatsGained.Speed += careerRaceFixed[0] * 8;
+        totalStatsGained.Stamina += careerRaceFixed[1] * 8;
+        totalStatsGained.Power += careerRaceFixed[2] * 8;
+        totalStatsGained.Guts += careerRaceFixed[3] * 8;
+        totalStatsGained.Wit! += careerRaceFixed[4] * 8;
+        totalStatsGained["Skill Points"]! += careerRaceFixed[5] * 8;
+
+        // G1 races: based on optionalRaces.G1 count
+        totalStatsGained.Speed += optionalRaces.G1 * g1RewardsFixed[0];
+        totalStatsGained.Stamina += optionalRaces.G1 * g1RewardsFixed[1];
+        totalStatsGained.Power += optionalRaces.G1 * g1RewardsFixed[2];
+        totalStatsGained.Guts += optionalRaces.G1 * g1RewardsFixed[3];
+        totalStatsGained.Wit! += optionalRaces.G1 * g1RewardsFixed[4];
+        totalStatsGained["Skill Points"]! += optionalRaces.G1 * g1RewardsFixed[5];
+
+        // G2/G3 races: based on optionalRaces.G2or3 count
+        totalStatsGained.Speed += optionalRaces.G2or3 * g2or3RewardsFixed[0];
+        totalStatsGained.Stamina += optionalRaces.G2or3 * g2or3RewardsFixed[1];
+        totalStatsGained.Power += optionalRaces.G2or3 * g2or3RewardsFixed[2];
+        totalStatsGained.Guts += optionalRaces.G2or3 * g2or3RewardsFixed[3];
+        totalStatsGained.Wit! += optionalRaces.G2or3 * g2or3RewardsFixed[4];
+        totalStatsGained["Skill Points"]! += optionalRaces.G2or3 * g2or3RewardsFixed[5];
+
+        // PreOP/OP races: based on optionalRaces.PreOPorOP count
+        totalStatsGained.Speed += optionalRaces.PreOPorOP * preOPorOPRewardsFixed[0];
+        totalStatsGained.Stamina += optionalRaces.PreOPorOP * preOPorOPRewardsFixed[1];
+        totalStatsGained.Power += optionalRaces.PreOPorOP * preOPorOPRewardsFixed[2];
+        totalStatsGained.Guts += optionalRaces.PreOPorOP * preOPorOPRewardsFixed[3];
+        totalStatsGained.Wit! += optionalRaces.PreOPorOP * preOPorOPRewardsFixed[4];
+        totalStatsGained["Skill Points"]! += optionalRaces.PreOPorOP * preOPorOPRewardsFixed[5];
+
+        // Add scenario bonuses
+        const scenarioBonus = TrainingData.getScenarioBonusStats(scenarioName);
+        totalStatsGained.Speed += scenarioBonus.Speed || 0;
+        totalStatsGained.Stamina += scenarioBonus.Stamina || 0;
+        totalStatsGained.Power += scenarioBonus.Power || 0;
+        totalStatsGained.Guts += scenarioBonus.Guts || 0;
+        totalStatsGained.Wit! += scenarioBonus.Intelligence || 0;
+
+        const scenarioDistributedBonus = TrainingData.getScenarioTrainingDistributedBonusStats(scenarioName);
+        if (scenarioDistributedBonus > 0) {
+            totalStatsGained.Speed += scenarioDistributedBonus * trainingDistribution[0];
+            totalStatsGained.Stamina += scenarioDistributedBonus * trainingDistribution[1];
+            totalStatsGained.Power += scenarioDistributedBonus * trainingDistribution[2];
+            totalStatsGained.Guts += scenarioDistributedBonus * trainingDistribution[3];
+            totalStatsGained.Wit! += scenarioDistributedBonus * trainingDistribution[4];
+        }
+
+        // Record total race bonus as a percentage (e.g. 0.25 -> 25)
+        totalStatsGained["Race Bonus"] = raceBonus * 100;
+
+        return totalStatsGained;
+    }
+
+    public evaluateHints(
+        raceTypes: boolean[] = [false, false, false, false],
+        runningTypes: boolean[] = [false, false, false, false],
+        optionalRaces: {G1: number, G2or3: number, PreOPorOP: number} = {G1: 0, G2or3: 0, PreOPorOP: 0},
+        deckStats?: {Speed: number, Stamina: number, Power: number, Guts: number, Wit: number},
+        statWeights?: {Speed: number, Stamina: number, Power: number, Guts: number, Wit: number},
+    ): HintResult {
+        const totalHintsGained: HintResult = {
+            hint_frequency: 0,
+            hints_from_events: 0,
+            useful_hints_rate: 0,
+            "hints from training": 0,
+            total_hints: 0,
+            gold_skills: [],
+        };
+        const allGoldSkills: Array<{ name: string; value: number; multiplier: number; icon_id: number; active: boolean }> = [];
+        const seenSkillNames = new Set<string>();
+
+        for (const card of this.deck) {
+            const hintForCard = card.evaluateCardHints(raceTypes, runningTypes, optionalRaces, deckStats, statWeights);
+            
+            // Accumulate numeric properties
+            totalHintsGained.hint_frequency += hintForCard.hint_frequency;
+            totalHintsGained.hints_from_events += hintForCard.hints_from_events;
+            totalHintsGained.useful_hints_rate += hintForCard.useful_hints_rate;
+            totalHintsGained["hints from training"] += hintForCard["hints from training"];
+            totalHintsGained.total_hints += hintForCard.total_hints;
+            
+            // Accumulate gold skills, but only add if not already seen (avoid duplicates from multiple cards)
+            for (const skill of hintForCard.gold_skills) {
+                if (!seenSkillNames.has(skill.name)) {
+                    seenSkillNames.add(skill.name);
+                    allGoldSkills.push(skill);
+                }
+            }
+        }
+
+        if (this.deck.length > 0) {
+            totalHintsGained.hint_frequency /= this.deck.length;
+            totalHintsGained.useful_hints_rate /= this.deck.length;
+        }
+
+        totalHintsGained.gold_skills = allGoldSkills;
+
+        return totalHintsGained;
+    }
+}
